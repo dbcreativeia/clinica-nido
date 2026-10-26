@@ -82,6 +82,8 @@ export const AdminCRMPage: React.FC = () => {
   } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeAdminTab, setActiveAdminTab] = useState<'crm' | 'analytics' | 'mapa'>('crm');
+  const [leadToDelete, setLeadToDelete] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Check saved session on mount
   useEffect(() => {
@@ -241,11 +243,11 @@ export const AdminCRMPage: React.FC = () => {
     }
   };
 
-  const handleDeleteLead = async (leadId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este registro do CRM?')) {
-      return;
-    }
+  const handleDeleteLead = (leadId: string) => {
+    setLeadToDelete(leadId);
+  };
 
+  const confirmDeleteLead = async (leadId: string) => {
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
         method: 'DELETE'
@@ -256,16 +258,21 @@ export const AdminCRMPage: React.FC = () => {
         if (selectedLead && selectedLead.id === leadId) {
           setSelectedLead(null);
         }
+        setActionFeedback('Lead excluído com sucesso.');
+        setTimeout(() => setActionFeedback(null), 3000);
       }
     } catch (err) {
       console.error('Error deleting lead:', err);
+    } finally {
+      setLeadToDelete(null);
     }
   };
 
   // Export to CSV
   const handleExportCSV = () => {
     if (leads.length === 0) {
-      alert('Não há contatos para exportar.');
+      setActionFeedback('Não há contatos para exportar.');
+      setTimeout(() => setActionFeedback(null), 3000);
       return;
     }
 
@@ -1287,6 +1294,39 @@ export const AdminCRMPage: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Delete */}
+      {leadToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-xl border border-[#E5DAD0]">
+            <h3 className="font-serif text-lg font-bold text-[#1F1916]">Excluir Lead</h3>
+            <p className="text-sm text-[#5C4B44]">Tem certeza que deseja excluir este registro do CRM?</p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setLeadToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDeleteLead(leadToDelete)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors cursor-pointer"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Feedback Toast */}
+      {actionFeedback && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#241E1B] text-white px-5 py-3 rounded-2xl shadow-xl text-xs font-medium animate-in fade-in">
+          {actionFeedback}
         </div>
       )}
     </div>

@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PIXEL_ID = process.env.META_PIXEL_ID || '1002877629496230';
-const CAPI_TOKEN = process.env.META_CONVERSIONS_API_TOKEN || 'EAAZAuhmQGdR0BS1O4SAyXTDFtRd2jOxwXxDxO9fCJZCPgpv4OPPwA8tpPQArZAuZCUinn2WsXUrNmrI8aGNkG7NKTiDfENdv3OReyVL96IkIl6FBxyCvmwv5tinBC0xZBWJsryyHiPvWZCk5bFF3eUuNL4md3BIwdLPhYODOcP8DQHg5BeNN9seFtCZC6G5tqvg0AZDZD';
+const CAPI_TOKEN = process.env.META_CONVERSIONS_API_TOKEN || '';
 
 function hashSha256(value: string): string {
   const normalized = value.trim().toLowerCase();
@@ -105,6 +105,16 @@ async function startServer() {
         }
       };
 
+      // If Meta Conversions API token is not configured, accept the event locally
+      if (!CAPI_TOKEN) {
+        return res.json({
+          success: true,
+          simulated: true,
+          message: 'Meta Conversions API token not configured; event accepted locally',
+          eventId: eventPayload.event_id
+        });
+      }
+
       const metaUrl = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${CAPI_TOKEN}`;
 
       const metaRes = await fetch(metaUrl, {
@@ -120,10 +130,11 @@ async function startServer() {
       const metaData = await metaRes.json() as Record<string, unknown>;
 
       if (!metaRes.ok) {
-        console.warn('[Meta CAPI Warning]', metaData);
-        return res.status(metaRes.status).json({
+        const errorObj = (metaData.error as Record<string, unknown>) || {};
+        return res.json({
           success: false,
-          error: metaData.error || 'Meta API returned an error',
+          warning: typeof errorObj.message === 'string' ? errorObj.message : 'Meta CAPI request rejected',
+          type: typeof errorObj.type === 'string' ? errorObj.type : undefined,
           eventId: eventPayload.event_id
         });
       }

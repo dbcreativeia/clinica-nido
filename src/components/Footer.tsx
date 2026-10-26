@@ -106,6 +106,14 @@ export const Footer: React.FC = () => {
             <Link to="/politica-de-cookies" className="hover:text-[#FFFFFF] transition-colors">
               Política de Cookies
             </Link>
+            <span className="text-[#332923] hidden sm:inline">•</span>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('nido:open-cookie-settings'))}
+              className="hover:text-[#FFFFFF] transition-colors cursor-pointer underline-offset-2 hover:underline"
+            >
+              Preferências de Privacidade
+            </button>
           </div>
           <p className="text-[11px] text-[#C4B1A0]/70">
             © {new Date().getFullYear()} Clínica Nidô Estética Avançada. Todos os direitos reservados.

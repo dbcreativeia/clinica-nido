@@ -27,6 +27,7 @@ export const ContactPage: React.FC = () => {
     privacyAccepted: false
   });
   const [submitted, setSubmitted] = useState(false);
+  const [formError, setFormError] = useState('');
 
   // Coordenadas e endereço da clínica
   const addressQuery = encodeURIComponent('Rua Dona Germaine Burchard, 499 - Água Branca, São Paulo - SP');
@@ -45,9 +46,10 @@ export const ContactPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.privacyAccepted) {
-      alert('Por favor, aceite a Política de Privacidade para prosseguir.');
+      setFormError('Por favor, aceite a Política de Privacidade para prosseguir.');
       return;
     }
+    setFormError('');
 
     const cleanName = formData.name.trim();
     const cleanEmail = formData.email.trim();
@@ -415,6 +417,12 @@ export const ContactPage: React.FC = () => {
                   </span>
                 </label>
               </div>
+
+              {formError && (
+                <div className="p-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-xl">
+                  {formError}
+                </div>
+              )}
 
               <div className="pt-2">
                 <button

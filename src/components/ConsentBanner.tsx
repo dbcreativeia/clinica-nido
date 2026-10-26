@@ -3,6 +3,9 @@ import { ShieldCheck, MapPin, X, Lock, CheckCircle2, ChevronRight, Settings } fr
 import { Link } from 'react-router-dom';
 import { requestBrowserLocation } from '../utils/internalAnalytics';
 
+// Período de validade do consentimento segundo as boas práticas da LGPD (6 meses / 180 dias)
+const CONSENT_DURATION_MS = 180 * 24 * 60 * 60 * 1000;
+
 export const ConsentBanner: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
@@ -14,23 +17,34 @@ export const ConsentBanner: React.FC = () => {
   const [metaConsent, setMetaConsent] = useState(false);
 
   useEffect(() => {
-    // Clear stored consent so user can test as a brand new visitor
-    localStorage.removeItem('nido_cookie_consent');
-    localStorage.removeItem('nido_last_lead');
-    sessionStorage.removeItem('nido_visitor_geo');
+    // Permite que o usuário reabra suas preferências de cookies a qualquer momento pelo rodapé
+    const handleReopen = () => {
+      setShowCustomize(true);
+      setIsVisible(true);
+    };
+    window.addEventListener('nido:open-cookie-settings', handleReopen);
 
     const saved = localStorage.getItem('nido_cookie_consent');
     if (!saved) {
       setIsVisible(true);
     } else {
-      setIsVisible(false);
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.geo) setGeoConsent(true);
-        if (parsed.analytics) setAnalyticsConsent(true);
-        if (parsed.meta) setMetaConsent(true);
+        const timestamp = typeof parsed.timestamp === 'number' ? parsed.timestamp : 0;
+        const isExpired = Date.now() - timestamp > CONSENT_DURATION_MS;
+
+        if (isExpired) {
+          // Após 6 meses, o consentimento expira e solicita renovação conforme a LGPD
+          setIsVisible(true);
+        } else {
+          // Dentro dos 6 meses: mantém o banner oculto e preserva as escolhas do usuário
+          setIsVisible(false);
+          if (parsed.geo) setGeoConsent(true);
+          if (parsed.analytics) setAnalyticsConsent(true);
+          if (parsed.meta) setMetaConsent(true);
+        }
       } catch {
-        // Ignore parse error
+        setIsVisible(true);
       }
     }
 
@@ -46,6 +60,10 @@ export const ConsentBanner: React.FC = () => {
         }
       }).catch(() => {});
     }
+
+    return () => {
+      window.removeEventListener('nido:open-cookie-settings', handleReopen);
+    };
   }, []);
 
   const handleTriggerGeo = async () => {
@@ -71,6 +89,8 @@ export const ConsentBanner: React.FC = () => {
         analytics: true, 
         meta: true, 
         timestamp: Date.now(),
+        expiresAt: Date.now() + CONSENT_DURATION_MS,
+        durationDays: 180,
         lgpdVersion: '13.709/2018'
       })
     );
@@ -93,6 +113,8 @@ export const ConsentBanner: React.FC = () => {
         analytics: false, 
         meta: false, 
         timestamp: Date.now(),
+        expiresAt: Date.now() + CONSENT_DURATION_MS,
+        durationDays: 180,
         lgpdVersion: '13.709/2018'
       })
     );
@@ -112,6 +134,8 @@ export const ConsentBanner: React.FC = () => {
         analytics: analyticsConsent, 
         meta: metaConsent, 
         timestamp: Date.now(),
+        expiresAt: Date.now() + CONSENT_DURATION_MS,
+        durationDays: 180,
         lgpdVersion: '13.709/2018'
       })
     );
