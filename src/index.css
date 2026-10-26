@@ -1,0 +1,331 @@
+@import "tailwindcss";
+
+/* 1. Definição @font-face para Higuen Serif */
+@font-face {
+  font-family: 'Higuen';
+  src: url('/fonts/higuen serif.otf') format('opentype'),
+       url('/fonts/Higuen Serif.otf') format('opentype'),
+       url('/fonts/higuen-serif.otf') format('opentype'),
+       url('/fonts/Higuen.otf') format('opentype'),
+       url('/fonts/Higuen.woff2') format('woff2'),
+       url('/fonts/Higuen.woff') format('woff'),
+       url('/fonts/Higuen.ttf') format('truetype'),
+       local('Higuen Serif'),
+       local('Higuen'),
+       local('Higuen-Regular'),
+       local('Higuen Elegant Serif'),
+       local('Higuen Modern Serif'),
+       url('https://db.onlinewebfonts.com/t/79011707572709298379435422896200.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-serif: "Bodoni Moda", Georgia, serif;
+  --font-sans: "Google Sans", "Google Sans Text", "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  
+  /* Paleta Oficial da Clínica Nidô (Nobre, Acolhedora e de Alto Contraste) */
+  --color-nido-linen: #F7F2EB;
+  --color-nido-white: #FFFFFF;
+  --color-nido-cream: #EFE6DC;
+  --color-nido-nude: #E6DAD0;
+  --color-nido-charcoal: #241E1B;
+  --color-nido-black: #14100E;
+  --color-nido-espresso: #44342E;
+  --color-nido-taupe: #66534B;
+  --color-nido-bronze: #8C7359;
+  --color-nido-rose: #8F7268;
+
+  /* Mapeamento de retrocompatibilidade */
+  --color-nido-ivory: #F7F2EB;
+  --color-nido-sand: #E6DAD0;
+  --color-nido-dark: #241E1B;
+  --color-nido-gold: #8C7359;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(
+      circle at 20% 10%,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0) 38%
+    ),
+    radial-gradient(
+      circle at 85% 55%,
+      rgba(201, 178, 151, 0.16) 0%,
+      rgba(201, 178, 151, 0) 42%
+    ),
+    #F5EFE7;
+  background-attachment: scroll;
+  color: #241E1B;
+  font-weight: 400;
+  line-height: 1.65;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+  position: relative;
+  letter-spacing: 0.02em;
+  word-spacing: 0.05em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Textura Sutil de Grain/Noise (Papel Algodão / Editorial de Luxo) */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  opacity: 0.025;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  z-index: 9999;
+  transform: translateZ(0);
+  will-change: transform;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Hierarquia de Planos de Superfície */
+.bg-nido-base { background-color: #F5EFE7; }
+.bg-nido-light { background-color: #FCF9F5; }
+.bg-nido-surface { background-color: #EEE4D8; }
+
+/* Tipografia Editorial com Presença e Nobreza */
+h1, h2, h3, h4, .font-serif, .font-instrument, .font-cormorant, .font-playfair, .font-higuen {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+h1 em, h2 em, h3 em, h4 em, .font-serif em, .font-serif i, em.italic {
+  font-family: inherit;
+  font-style: italic;
+  font-weight: inherit;
+}
+
+h1 span, h2 span, h3 span, h4 span, .font-serif span {
+  font-family: inherit;
+  font-weight: inherit;
+}
+
+body, p, button, input, select, textarea, .font-sans, .font-jakarta, .font-poppins {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  letter-spacing: 0.015em;
+}
+
+/* ==========================================================
+   ESTILO LIQUID GLASS (GLASSMORPHISM DE LUXO E FLUIDEZ ELEGANTE)
+   ========================================================== */
+
+/* Animações Liquid Glass & Interações */
+@keyframes liquidFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes glassShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes softPulse {
+  0%, 100% {
+    box-shadow: 0 8px 24px -4px rgba(68, 52, 46, 0.25);
+  }
+  50% {
+    box-shadow: 0 12px 30px 2px rgba(68, 52, 46, 0.45);
+  }
+}
+
+.animate-liquid-float {
+  animation: liquidFloat 6s ease-in-out infinite;
+}
+
+.animate-pulse-whatsapp {
+  animation: softPulse 3s ease-in-out infinite;
+}
+
+/* Cartões com Vidro Fluido Translúcido e Brilho Interno */
+.liquid-glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 10px 30px -5px rgba(68, 52, 46, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.liquid-glass-card:hover {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(68, 52, 46, 0.35);
+  box-shadow: 0 22px 45px -10px rgba(68, 52, 46, 0.16), inset 0 1.5px 2px 0 rgba(255, 255, 255, 1);
+  transform: translateY(-3px);
+}
+
+/* Painéis de Destaque com Vidro Acolhedor */
+.liquid-glass-panel {
+  background: rgba(239, 230, 220, 0.65);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 12px 36px 0 rgba(68, 52, 46, 0.09), inset 0 1px 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+/* Barra de Busca e Overlays com Efeito de Vidro Líquido e Elevação */
+.liquid-glass-search {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(120, 93, 72, 0.12);
+  box-shadow:
+    0 12px 35px rgba(70, 48, 35, 0.08),
+    0 2px 6px rgba(70, 48, 35, 0.05);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+.liquid-glass-dropdown {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1.5px solid rgba(229, 218, 208, 0.9);
+  box-shadow: 0 24px 50px -10px rgba(24, 19, 16, 0.22), inset 0 1px 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* Painel Escuro em Vidro Líquido (Para Overlays e Hero) */
+.liquid-glass-dark {
+  background: rgba(24, 19, 16, 0.78);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Botões em Estilo Liquid Glass */
+.btn-nido-primary, .liquid-glass-btn-primary {
+  background: rgba(68, 52, 46, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 24px -4px rgba(68, 52, 46, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-nido-primary:hover, .liquid-glass-btn-primary:hover {
+  background: rgba(86, 67, 59, 0.96);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 14px 32px -4px rgba(68, 52, 46, 0.38), inset 0 1px 2px rgba(255, 255, 255, 0.55);
+  transform: translateY(-2px);
+}
+
+.btn-nido-secondary, .liquid-glass-btn-secondary {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(229, 218, 208, 0.95);
+  box-shadow: 0 6px 18px -2px rgba(68, 52, 46, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-nido-secondary:hover, .liquid-glass-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(68, 52, 46, 0.4);
+  box-shadow: 0 10px 24px -4px rgba(68, 52, 46, 0.16), inset 0 1px 1px rgba(255, 255, 255, 1);
+  transform: translateY(-1px);
+}
+
+@keyframes whatsappSubtlePulse {
+  0%, 60%, 100% {
+    background-color: #44342E;
+    color: #FFFFFF;
+    box-shadow: 0 6px 20px -2px rgba(68, 52, 46, 0.25);
+  }
+  75%, 90% {
+    background-color: #25D366; /* WhatsApp Green */
+    color: #FFFFFF;
+    box-shadow: 0 8px 25px -2px rgba(37, 211, 102, 0.45);
+  }
+}
+
+.animate-whatsapp-brand-pulse {
+  animation: whatsappSubtlePulse 7s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-nido-whatsapp, .liquid-glass-btn-whatsapp {
+  background: rgba(68, 52, 46, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 24px -4px rgba(68, 52, 46, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: whatsappSubtlePulse 7s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-nido-whatsapp:hover, .liquid-glass-btn-whatsapp:hover {
+  background: rgba(86, 67, 59, 0.96);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 14px 30px -4px rgba(68, 52, 46, 0.38), inset 0 1px 2px rgba(255, 255, 255, 0.55);
+  transform: translateY(-2px);
+}
+
+/* Retrocompatibilidade com classes de fundos leves */
+.bg-nido-gradient-light {
+  background: #FAF6F0;
+}
+
+/* Utilitários diretos */
+.font-serif,
+.font-instrument,
+.font-cormorant,
+.font-higuen,
+.font-garamond,
+.font-playfair,
+.font-dm-serif,
+.font-bodoni {
+  font-family: 'Bodoni Moda', var(--font-serif) !important;
+  letter-spacing: -0.025em !important;
+}
+
+.font-jakarta {
+  font-family: var(--font-sans) !important;
+}
+
+.font-poppins {
+  font-family: var(--font-sans) !important;
+}
+
+.font-montserrat,
+.font-google-sans {
+  font-family: 'Google Sans', var(--font-sans) !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F7F2EB;
+}
+::-webkit-scrollbar-thumb {
+  background: #D8CABA;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #66534B;
+}

@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "totalPageViews": 0,
+    "uniqueVisitors": 0,
+    "avgSessionDuration": "0m 0s",
+    "bounceRate": "0%",
+    "leadConversionRate": "0%"
+  },
+  "routes": [
+    { "name": "/", "label": "Página Inicial (Hero & Apresentação)", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos", "label": "Catálogo Geral de Tratamentos", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/a-clinica", "label": "A Clínica Nidô & Estrutura", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tecnologias", "label": "Tecnologias Avançadas (HIPRO, Lavieen, Endymed)", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/corpo-clinico", "label": "Corpo Clínico & Especialistas", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/contato", "label": "Contato & Rotas de Atendimento (Água Branca)", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos/endoslim", "label": "Página Endoslim (Remodelação & Laser)", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos/bio-regeneracao-celular", "label": "Página Bio Regeneração Celular (Exossomos/PDRN)", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos/profhilo", "label": "Página Profhilo® (Biorremodelador)", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos/peeling-dermeskin-melasma", "label": "Página Peeling Dermeskin Melasma", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos/hipro-facial-corporal", "label": "Página HIPRO Ultrassom Microfocado", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 },
+    { "name": "/tratamentos/harmonizacao-facial", "label": "Página Harmonização Facial Personalizada", "clicks": 0, "uniqueVisitors": 0, "percentage": 0 }
+  ],
+  "treatments": [
+    { "name": "Endoslim", "category": "Corporal Avançado", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Bio Regeneração Celular", "category": "Medicina Regenerativa", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Profhilo®", "category": "Injetável Biorremodelador", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Extração Regeneradora Facial com Peptídeos", "category": "Cuidado Facial", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Tratamento para Melasma com Peeling Dermeskin", "category": "Clareamento & Pigmentação", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Lifting Não Cirúrgico HIPRO", "category": "Tecnologia Microfocada", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Harmonização Facial Personalizada", "category": "Harmonização", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Toxina Botulínica Preventiva e Reparadora", "category": "Injetáveis", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Terapia Capilar & Tricologia Avançada", "category": "Tricologia & Capilar", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Protocolo Redutor de Gordura Localizada", "category": "Corporal Avançado", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Tratamento de Celulite e Flacidez Corporal", "category": "Corporal Avançado", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Nutrologia, Longevidade & Performance", "category": "Saúde & Longevidade", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 },
+    { "name": "Drenagem Linfática Especializada & Pós-Cirúrgico", "category": "Bem-Estar & Recuperação", "views": 0, "percentage": 0, "avgTimeSpent": "0s", "leadsGenerated": 0 }
+  ],
+  "ctaClicks": [
+    { "label": "Botão WhatsApp Flutuante", "location": "Fixo Inferior Direito", "clicks": 0, "conversionRate": "0%" },
+    { "label": "Banner Hero - Agendar Consulta & Avaliação", "location": "Hero Principal", "clicks": 0, "conversionRate": "0%" },
+    { "label": "Botão Endoslim - Quero Minha Avaliação", "location": "Página de Tratamento Endoslim", "clicks": 0, "conversionRate": "0%" },
+    { "label": "Traçar Rota no Waze / Google Maps (Água Branca)", "location": "Seção Endereço & Como Chegar", "clicks": 0, "conversionRate": "0%" },
+    { "label": "Formulário de Contato Direto", "location": "Modal de Captura de Lead", "clicks": 0, "conversionRate": "0%" },
+    { "label": "Rodapé - Falar com o Corpo Clínico", "location": "Rodapé", "clicks": 0, "conversionRate": "0%" }
+  ],
+  "topLocations": [],
+  "trafficSources": [
+    { "channel": "Google Ads", "visitors": 0, "percentage": 0, "leads": 0 },
+    { "channel": "Google Orgânico", "visitors": 0, "percentage": 0, "leads": 0 },
+    { "channel": "Meta Ads (Instagram / FB)", "visitors": 0, "percentage": 0, "leads": 0 },
+    { "channel": "ChatGPT / IA", "visitors": 0, "percentage": 0, "leads": 0 },
+    { "channel": "Direto", "visitors": 0, "percentage": 0, "leads": 0 }
+  ],
+  "recentLiveEvents": []
+}

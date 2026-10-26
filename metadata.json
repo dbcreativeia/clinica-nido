@@ -1,0 +1,7 @@
+{
+  "name": "Clínica Nidô - Estética Avançada em São Paulo",
+  "description": "Tratamentos faciais, corporais e regenerativos com avaliação individualizada, tecnologia de ponta e cuidado que respeita sua identidade na Água Branca, São Paulo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
