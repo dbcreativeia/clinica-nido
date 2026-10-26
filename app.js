@@ -1,1 +1,2 @@
-import './server.js';
+require('tsx/cjs');
+require('./server.ts');
