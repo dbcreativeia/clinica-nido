@@ -164,11 +164,19 @@ export const AdminCRMPage: React.FC = () => {
     if (targetLead && isQualifyingLead) {
       const statusLabel = newStatus === 'agendado' ? 'Avaliação Agendada' : 'Convertido';
       try {
+        const nameParts = (targetLead.name || '').trim().split(/\s+/);
+        const firstName = nameParts[0] || targetLead.name;
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+
         metaEventId = await trackMetaEvent('Lead', {
           userData: {
             em: targetLead.email,
             ph: targetLead.phone,
-            fn: targetLead.name
+            fn: firstName,
+            ...(lastName ? { ln: lastName } : {}),
+            ct: targetLead.city || 'sao paulo',
+            st: targetLead.state || 'sp',
+            country: 'br'
           },
           customData: {
             content_name: targetLead.serviceInterest || 'Avaliação Estética',

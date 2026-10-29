@@ -170,26 +170,36 @@ export const LeadCaptureModal: React.FC = () => {
 
       // Meta Conversions API & Pixel Contact event with rich matching data
       try {
+        const nameParts = cleanName.split(/\s+/);
+        const firstName = nameParts[0] || cleanName;
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+
         trackMetaEvent('Contact', {
           customData: {
-            content_name: serviceInterest,
+            content_name: 'Atendimento e Consulta Estética',
+            service_label: serviceInterest || 'Avaliação Geral',
             content_category: 'Atendimento WhatsApp CRM',
             cta_location: ctaLocation
           },
           userData: {
-            fn: cleanName,
+            fn: firstName,
+            ...(lastName ? { ln: lastName } : {}),
             ph: cleanPhoneDigits,
             em: cleanEmail.toLowerCase(),
-            fbp: traffic.fbclid,
-            fbc: traffic.fbclid
+            country: 'br',
+            st: 'sp',
+            ct: 'sao paulo'
           }
         });
       } catch (metaErr) {
         console.warn('[Meta Tracking Warning]', metaErr);
       }
 
-      // Open WhatsApp directly with personalized message
-      openDirectWhatsApp(personalizedMessage, context);
+      // Open WhatsApp directly with personalized message, skipping duplicate Contact trigger
+      openDirectWhatsApp(personalizedMessage, {
+        ...context,
+        skipMetaContact: true
+      });
 
       // Close modal
       setIsOpen(false);

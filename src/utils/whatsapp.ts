@@ -61,6 +61,7 @@ export interface WhatsAppContext {
   service_name?: string;
   page_path?: string;
   cta_location?: string;
+  skipMetaContact?: boolean;
 }
 
 /**
@@ -78,7 +79,8 @@ export function openDirectWhatsApp(
   trackEvent('whatsapp_click', {
     service_name: serviceName,
     page_path: pagePath,
-    cta_location: ctaLocation
+    cta_location: ctaLocation,
+    skipMetaContact: context?.skipMetaContact
   });
 
   const url = buildWhatsAppUrl(message);

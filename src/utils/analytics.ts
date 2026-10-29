@@ -39,7 +39,9 @@ export function trackEvent(eventName: string, payload?: TrackingPayload): void {
 
     // Direct Meta Pixel & Conversions API integration
     if (eventName === 'whatsapp_click') {
-      trackMetaContact(payload?.service_name, payload?.cta_location);
+      if (!payload?.skipMetaContact) {
+        trackMetaContact(payload?.service_name, payload?.cta_location);
+      }
     } else {
       trackMetaEvent(eventName, {
         customData: payload

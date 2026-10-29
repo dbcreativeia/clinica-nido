@@ -13,6 +13,28 @@ const __dirname = path.dirname(__filename);
 
 const PIXEL_ID = process.env.META_PIXEL_ID || '1002877629496230';
 const CAPI_TOKEN = process.env.META_CONVERSIONS_API_TOKEN || '';
+const TEST_EVENT_CODE = process.env.META_TEST_EVENT_CODE || '';
+const PRODUCTION_DOMAINS = ['nidoestetica.com.br', 'www.nidoestetica.com.br'];
+
+// In-memory 24-hour idempotency cache to prevent duplicate CAPI event processing
+const eventDedupeCache = new Map<string, number>();
+const DEDUPE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isEventDuplicate(key: string): boolean {
+  const now = Date.now();
+  if (eventDedupeCache.size > 2000) {
+    for (const [k, timestamp] of eventDedupeCache.entries()) {
+      if (now - timestamp > DEDUPE_TTL_MS) {
+        eventDedupeCache.delete(k);
+      }
+    }
+  }
+  if (eventDedupeCache.has(key)) {
+    return true;
+  }
+  eventDedupeCache.set(key, now);
+  return false;
+}
 
 function hashSha256(value: string): string {
   const normalized = value.trim().toLowerCase();
@@ -20,10 +42,76 @@ function hashSha256(value: string): string {
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
-function normalizePhoneHash(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  const withCountry = (digits.length === 10 || digits.length === 11) ? `55${digits}` : digits;
-  return hashSha256(withCountry);
+function normalizeText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '');
+}
+
+function normalizePhone(phone: string): string {
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length === 10 || digits.length === 11) {
+    digits = `55${digits}`;
+  }
+  return digits;
+}
+
+function cleanClientIp(ip: string): string {
+  let clean = ip.replace(/^::ffff:/, '').trim();
+  if (clean.includes(':') && !clean.includes('::')) {
+    const parts = clean.split(':');
+    if (parts.length === 2 && parts[0].includes('.')) {
+      clean = parts[0];
+    }
+  }
+  return clean;
+}
+
+function extractRealClientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    const firstIp = forwarded.split(',')[0].trim();
+    if (firstIp) return cleanClientIp(firstIp);
+  } else if (Array.isArray(forwarded) && forwarded.length > 0) {
+    const firstIp = forwarded[0].trim();
+    if (firstIp) return cleanClientIp(firstIp);
+  }
+  const realIp = req.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) {
+    return cleanClientIp(realIp.trim());
+  }
+  return cleanClientIp(req.socket.remoteAddress || '');
+}
+
+function isProductionUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    return PRODUCTION_DOMAINS.includes(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeUrlForMeta(urlStr: string): string {
+  try {
+    const parsed = new URL(urlStr);
+    const safeParams = new URLSearchParams();
+    const ALLOWED_PARAMS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+    parsed.searchParams.forEach((val, key) => {
+      if (ALLOWED_PARAMS.includes(key.toLowerCase())) {
+        safeParams.set(key, val);
+      }
+    });
+    parsed.search = safeParams.toString();
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return 'https://www.nidoestetica.com.br/';
+  }
 }
 
 async function startServer() {
@@ -39,6 +127,8 @@ async function startServer() {
       status: 'active',
       pixelId: PIXEL_ID,
       tokenConfigured: Boolean(CAPI_TOKEN),
+      testCodeConfigured: Boolean(TEST_EVENT_CODE),
+      productionDomains: PRODUCTION_DOMAINS,
       timestamp: new Date().toISOString()
     });
   });
@@ -51,21 +141,19 @@ async function startServer() {
         eventId,
         eventSourceUrl,
         customData = {},
-        userData = {}
+        userData = {},
+        testEventCode,
+        isProductionClient
       } = req.body;
 
       if (!eventName) {
         return res.status(400).json({ error: 'eventName is required' });
       }
 
-      // Extract client IP (handle proxy / Cloud Run / X-Forwarded-For)
-      const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-      const clientIp = Array.isArray(rawIp)
-        ? rawIp[0]
-        : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '');
+      const clientIp = extractRealClientIp(req);
       const clientUserAgent = (req.headers['user-agent'] as string) || '';
 
-      // Parse cookies from headers
+      // Parse cookies from headers as reliable fallback
       const cookieHeader = req.headers.cookie || '';
       const cookies: Record<string, string> = {};
       cookieHeader.split(';').forEach((cookieStr) => {
@@ -77,42 +165,98 @@ async function startServer() {
         }
       });
 
+      // Strict Meta formatting: NEVER hash fbp, fbc, IP or User Agent
       const fbp = userData.fbp || cookies['_fbp'] || undefined;
       const fbc = userData.fbc || cookies['_fbc'] || undefined;
 
-      const hashedEm = userData.em ? hashSha256(userData.em) : undefined;
-      const hashedPh = userData.ph ? normalizePhoneHash(userData.ph) : undefined;
-      const hashedFn = userData.fn ? hashSha256(userData.fn) : undefined;
+      // Normalization and SHA-256 for PII
+      const normalizedEm = userData.em ? hashSha256(userData.em.trim().toLowerCase()) : undefined;
+      const normalizedPh = userData.ph ? hashSha256(normalizePhone(userData.ph)) : undefined;
+      const normalizedFn = userData.fn ? hashSha256(normalizeText(userData.fn)) : undefined;
+      const normalizedLn = userData.ln ? hashSha256(normalizeText(userData.ln)) : undefined;
+      const normalizedCt = userData.ct ? hashSha256(normalizeText(userData.ct)) : undefined;
+      const normalizedSt = userData.st ? hashSha256(userData.st.trim().toLowerCase()) : undefined;
+      const normalizedCountry = hashSha256(userData.country ? userData.country.trim().toLowerCase() : 'br');
+      const normalizedExternalId = userData.external_id ? hashSha256(userData.external_id.trim()) : undefined;
 
-      const eventPayload = {
+      const rawEventSourceUrl = eventSourceUrl || req.headers.referer || 'https://www.nidoestetica.com.br/';
+      const cleanEventSourceUrl = sanitizeUrlForMeta(rawEventSourceUrl);
+
+      const finalEventId = eventId || `nido_${eventName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+      // Backend Idempotency check: composite key = PIXEL_ID:eventName:eventId
+      const dedupeKey = `${PIXEL_ID}:${eventName}:${finalEventId}`;
+      if (isEventDuplicate(dedupeKey)) {
+        return res.json({
+          success: true,
+          deduplicated: true,
+          message: 'Event was already received and processed (idempotent)',
+          eventId: finalEventId
+        });
+      }
+
+      // Safe Custom Data: healthcare compliance, no clinical text
+      const sanitizedCustomData: Record<string, unknown> = {
+        currency: 'BRL',
+        content_type: 'product',
+        ...customData
+      };
+      if (!sanitizedCustomData.content_category) {
+        sanitizedCustomData.content_category = 'Atendimento e Consulta';
+      }
+
+      const eventPayload: Record<string, unknown> = {
         event_name: eventName,
         event_time: Math.floor(Date.now() / 1000),
-        event_id: eventId || `nido_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-        event_source_url: eventSourceUrl || req.headers.referer || 'https://www.nidoestetica.com.br/',
+        event_id: finalEventId,
+        event_source_url: cleanEventSourceUrl,
         action_source: 'website',
         user_data: {
           client_ip_address: clientIp || undefined,
           client_user_agent: clientUserAgent || undefined,
           ...(fbp ? { fbp } : {}),
           ...(fbc ? { fbc } : {}),
-          ...(hashedEm ? { em: hashedEm } : {}),
-          ...(hashedPh ? { ph: hashedPh } : {}),
-          ...(hashedFn ? { fn: hashedFn } : {})
+          ...(normalizedEm ? { em: normalizedEm } : {}),
+          ...(normalizedPh ? { ph: normalizedPh } : {}),
+          ...(normalizedFn ? { fn: normalizedFn } : {}),
+          ...(normalizedLn ? { ln: normalizedLn } : {}),
+          ...(normalizedCt ? { ct: normalizedCt } : {}),
+          ...(normalizedSt ? { st: normalizedSt } : {}),
+          ...(normalizedCountry ? { country: normalizedCountry } : {}),
+          ...(normalizedExternalId ? { external_id: normalizedExternalId } : {})
         },
-        custom_data: {
-          currency: 'BRL',
-          ...customData
-        }
+        custom_data: sanitizedCustomData
       };
 
-      // If Meta Conversions API token is not configured, accept the event locally
+      const effectiveTestCode = testEventCode || TEST_EVENT_CODE || undefined;
+
+      // Environment separation:
+      // If client is not on production domain and no test code is configured, suppress live Meta transmission
+      const isProd = isProductionUrl(cleanEventSourceUrl) || isProductionClient === true;
+      if (!isProd && !effectiveTestCode) {
+        return res.json({
+          success: true,
+          dev_mode: true,
+          message: 'Event acknowledged in development/preview mode; live Meta dataset protected.',
+          eventId: finalEventId
+        });
+      }
+
+      // If token not configured, simulate success locally
       if (!CAPI_TOKEN) {
         return res.json({
           success: true,
           simulated: true,
           message: 'Meta Conversions API token not configured; event accepted locally',
-          eventId: eventPayload.event_id
+          eventId: finalEventId
         });
+      }
+
+      const requestBody: Record<string, unknown> = {
+        data: [eventPayload]
+      };
+      if (effectiveTestCode) {
+        requestBody.test_event_code = effectiveTestCode;
       }
 
       const metaUrl = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${CAPI_TOKEN}`;
@@ -122,9 +266,7 @@ async function startServer() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          data: [eventPayload]
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const metaData = await metaRes.json() as Record<string, unknown>;
@@ -135,7 +277,7 @@ async function startServer() {
           success: false,
           warning: typeof errorObj.message === 'string' ? errorObj.message : 'Meta CAPI request rejected',
           type: typeof errorObj.type === 'string' ? errorObj.type : undefined,
-          eventId: eventPayload.event_id
+          eventId: finalEventId
         });
       }
 
@@ -143,7 +285,8 @@ async function startServer() {
         success: true,
         events_received: metaData.events_received,
         fbtrace_id: metaData.fbtrace_id,
-        eventId: eventPayload.event_id
+        eventId: finalEventId,
+        test_mode: Boolean(effectiveTestCode)
       });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown server error';

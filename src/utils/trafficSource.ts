@@ -3,6 +3,8 @@
  * Captures UTM parameters, click IDs (gclid, fbclid), and referrers to accurately attribute lead origins.
  */
 
+import { getOrCreateFbc, getOrCreateFbp } from './metaConversions';
+
 export type TrafficChannel = 
   | 'Google Ads'
   | 'Google Orgânico'
@@ -46,6 +48,10 @@ export function initTrafficAttribution(): TrafficData {
       capturedAt: new Date().toISOString()
     };
   }
+
+  // Resolve and preserve Meta _fbp and _fbc cookies immediately upon visit
+  getOrCreateFbp();
+  getOrCreateFbc();
 
   // Check if we already have first-touch attribution saved
   const existing = getStoredTrafficAttribution();

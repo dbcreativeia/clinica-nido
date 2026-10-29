@@ -88,18 +88,25 @@ export const ContactPage: React.FC = () => {
 
     // Meta tracking
     try {
+      const nameParts = cleanName.split(/\s+/);
+      const firstName = nameParts[0] || cleanName;
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+
       trackMetaEvent('Contact', {
         customData: {
-          content_name: formData.serviceInterest,
+          content_name: 'Atendimento e Consulta Estética',
+          service_label: formData.serviceInterest || 'Avaliação Geral',
           content_category: 'Atendimento & Avaliação',
           cta_location: 'Formulário Página Como Chegar'
         },
         userData: {
-          fn: cleanName,
+          fn: firstName,
+          ...(lastName ? { ln: lastName } : {}),
           ph: cleanPhoneDigits,
           em: cleanEmail.toLowerCase(),
-          fbp: traffic.fbclid,
-          fbc: traffic.fbclid
+          country: 'br',
+          st: 'sp',
+          ct: 'sao paulo'
         }
       });
     } catch {
@@ -109,7 +116,8 @@ export const ContactPage: React.FC = () => {
     openDirectWhatsApp(message, {
       service_name: formData.serviceInterest,
       page_path: '/contato',
-      cta_location: 'Formulário Página Como Chegar'
+      cta_location: 'Formulário Página Como Chegar',
+      skipMetaContact: true
     });
     setSubmitted(true);
   };

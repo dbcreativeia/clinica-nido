@@ -58,7 +58,7 @@
       s.parentNode.insertBefore(t,s)}(window, document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
       fbq('init', '1002877629496230');
-      fbq('track', 'PageView');
+      // PageView is dispatched deterministically by React Router with a shared eventID for 1:1 CAPI deduplication
     </script>
     <!-- End Meta Pixel Code -->
 

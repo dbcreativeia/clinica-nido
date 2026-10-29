@@ -41,8 +41,11 @@ function AppContent() {
   // Track page views and initialize traffic attribution
   useEffect(() => {
     window.scrollTo(0, 0);
-    trackMetaPageView(pathname);
+    // Initialize attribution and _fbc before firing PageView
     initTrafficAttribution();
+    if (window.location.hash !== '#admin') {
+      trackMetaPageView(pathname);
+    }
   }, [pathname]);
 
   const isAdmin = currentHash === '#admin';
