@@ -118,8 +118,9 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Middleware for JSON parsing
+  // Middleware for JSON and urlencoded parsing (Kommo webhooks send application/x-www-form-urlencoded)
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // Meta Conversions API Status / Health Check
   app.get('/api/meta/status', (_req: Request, res: Response) => {
@@ -419,6 +420,8 @@ async function startServer() {
     latitude?: number;
     longitude?: number;
     viewedTreatments?: string[];
+    kommoLeadId?: string;
+    kommoStatusId?: string;
     createdAt: string;
     updatedAt: string;
   }
@@ -566,6 +569,109 @@ async function startServer() {
     } catch (err: unknown) {
       console.error('[Create Lead Error]', err);
       return res.status(500).json({ error: 'Erro ao salvar lead' });
+    }
+  });
+
+  // Batch import leads from Kommo / CSV and optionally sync as qualified training leads
+  app.post('/api/leads/batch-import', async (req: Request, res: Response) => {
+    try {
+      const { leads: incomingLeads = [], syncToAds = true } = req.body;
+      if (!Array.isArray(incomingLeads) || incomingLeads.length === 0) {
+        return res.status(400).json({ error: 'Nenhum lead fornecido para importação.' });
+      }
+
+      const currentLeads = await readLeads();
+      let importedCount = 0;
+      let adsSyncedCount = 0;
+
+      for (const item of incomingLeads) {
+        const rawPhone = String(item.phone || '').trim();
+        const rawEmail = String(item.email || '').trim().toLowerCase();
+        const rawName = String(item.name || '').trim();
+
+        if (!rawPhone && !rawEmail && !rawName) continue;
+
+        // Clean status mapping from Kommo
+        let status = 'agendado';
+        const rawStatus = String(item.status || '').toLowerCase();
+        if (rawStatus.includes('venda') || rawStatus.includes('convert')) {
+          status = 'convertido';
+        } else if (rawStatus.includes('compareceu')) {
+          status = 'compareceu';
+        } else if (rawStatus.includes('negocia') || rawStatus.includes('contato')) {
+          status = 'em_contato';
+        } else if (rawStatus.includes('perdid')) {
+          status = 'perdido';
+        } else if (rawStatus.includes('novo')) {
+          status = 'novo';
+        }
+
+        const isQualified = status === 'agendado' || status === 'compareceu' || status === 'convertido';
+
+        // Check if lead already exists by phone or email
+        const cleanDigits = rawPhone.replace(/\D/g, '');
+        const existingIdx = currentLeads.findIndex((l) => {
+          const lDigits = (l.phone || '').replace(/\D/g, '');
+          return (cleanDigits && lDigits === cleanDigits) || (rawEmail && l.email === rawEmail);
+        });
+
+        if (existingIdx !== -1) {
+          // Update existing lead status
+          currentLeads[existingIdx].status = status;
+          if (item.serviceInterest) currentLeads[existingIdx].serviceInterest = item.serviceInterest;
+          if (item.notes) currentLeads[existingIdx].notes = item.notes;
+          currentLeads[existingIdx].updatedAt = new Date().toISOString();
+          if (isQualified && syncToAds) {
+            currentLeads[existingIdx].metaLeadSent = true;
+            currentLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+            adsSyncedCount++;
+          }
+        } else {
+          // Add new lead
+          const newLead: StoredLead = {
+            id: `kommo_imp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            name: rawName || 'Contato Kommo',
+            phone: rawPhone,
+            email: rawEmail || `contato_${Date.now()}@nido.local`,
+            serviceInterest: item.serviceInterest || 'Avaliação Estética Individualizada',
+            ctaLocation: 'Importado Kommo CRM',
+            message: item.message || 'Lead importado do Kommo para inteligência de audiência.',
+            trafficChannel: item.trafficChannel || 'Meta Ads (Kommo Sync)',
+            trafficSource: item.trafficSource || 'kommo_import',
+            trafficMedium: 'crm_sync',
+            trafficCampaign: 'kommo_qualificados',
+            pagePath: '/kommo-import',
+            city: item.city || 'São Paulo',
+            state: item.state || 'SP',
+            neighborhood: item.neighborhood || 'Água Branca',
+            status,
+            notes: item.notes || 'Importado do funil Kommo CRM.',
+            metaLeadSent: isQualified && syncToAds,
+            metaLeadSentAt: (isQualified && syncToAds) ? new Date().toISOString() : undefined,
+            createdAt: item.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          currentLeads.unshift(newLead);
+          importedCount++;
+          if (isQualified && syncToAds) {
+            adsSyncedCount++;
+          }
+        }
+      }
+
+      await writeLeads(currentLeads);
+
+      return res.json({
+        success: true,
+        message: `${importedCount} novos lead(s) importados e ${adsSyncedCount} calibrados para Meta/Google.`,
+        importedCount,
+        adsSyncedCount,
+        totalLeads: currentLeads.length
+      });
+    } catch (err: unknown) {
+      console.error('[Batch Import Error]', err);
+      return res.status(500).json({ error: 'Erro ao processar importação em lote.' });
     }
   });
 
@@ -768,6 +874,111 @@ async function startServer() {
   });
 
   // --------------------------------------------------------------------------
+  // Kommo CRM Webhook Integration
+  // Receives status change events from brendaniyama.kommo.com and syncs with site CRM
+  // --------------------------------------------------------------------------
+  app.get('/api/integrations/kommo/webhook', (_req: Request, res: Response) => {
+    // Health check endpoint for verifying connectivity
+    return res.json({
+      status: 'active',
+      integration: 'Kommo CRM Webhook',
+      account: 'brendaniyama.kommo.com',
+      supportedStages: [
+        { kommo: 'Em negociação', status: 'em_contato' },
+        { kommo: 'Agendamento', status: 'agendado' },
+        { kommo: 'Compareceu', status: 'compareceu' },
+        { kommo: 'Venda Realizada', status: 'convertido' },
+        { kommo: 'Perdido / Cancelado', status: 'perdido' }
+      ]
+    });
+  });
+
+  app.post('/api/integrations/kommo/webhook', async (req: Request, res: Response) => {
+    try {
+      const payload = req.body || {};
+      console.log('[Kommo Webhook Received]', JSON.stringify(payload).slice(0, 300));
+
+      // Kommo sends data nested under leads[status], leads[add], leads[update]
+      const leadsEvent = payload.leads?.status || payload.leads?.update || payload.leads?.add || [];
+      const eventItems = Array.isArray(leadsEvent) ? leadsEvent : Object.values(leadsEvent);
+
+      if (eventItems.length === 0) {
+        // Return 200 immediately to acknowledge ping/handshake
+        return res.status(200).json({ success: true, message: 'Webhook received (no lead updates)' });
+      }
+
+      const allLeads = await readLeads();
+      let updatedCount = 0;
+
+      for (const item of eventItems as any[]) {
+        if (!item) continue;
+
+        const kommoLeadId = String(item.id || '');
+        const kommoStatusId = String(item.status_id || '');
+        const kommoStatusName = String(item.status_name || item.pipeline_name || '').toLowerCase();
+        const leadName = String(item.name || '').trim();
+
+        // Map status based on name or known stage keywords
+        let mappedStatus: 'novo' | 'em_contato' | 'agendado' | 'compareceu' | 'convertido' | 'perdido' | null = null;
+
+        if (kommoStatusName.includes('venda') || kommoStatusName.includes('convertid') || kommoStatusName.includes('ganho') || kommoStatusName.includes('fechado')) {
+          mappedStatus = 'convertido';
+        } else if (kommoStatusName.includes('compareceu') || kommoStatusName.includes('presenca')) {
+          mappedStatus = 'compareceu';
+        } else if (kommoStatusName.includes('agend') || kommoStatusName.includes('marcad') || kommoStatusName.includes('consulta')) {
+          mappedStatus = 'agendado';
+        } else if (kommoStatusName.includes('negocia') || kommoStatusName.includes('atend') || kommoStatusName.includes('contato')) {
+          mappedStatus = 'em_contato';
+        } else if (kommoStatusName.includes('perdid') || kommoStatusName.includes('cancelad') || kommoStatusName.includes('desist')) {
+          mappedStatus = 'perdido';
+        }
+
+        // Search for matching lead in our stored leads:
+        // 1. By stored kommoLeadId
+        // 2. By clean phone number if available
+        // 3. By exact or fuzzy name match
+        let targetIndex = allLeads.findIndex((l: any) => l.kommoLeadId === kommoLeadId);
+
+        if (targetIndex === -1 && leadName) {
+          const cleanSearchName = leadName.toLowerCase();
+          targetIndex = allLeads.findIndex((l) => {
+            const storedName = (l.name || '').toLowerCase();
+            return storedName === cleanSearchName || (storedName.length > 3 && cleanSearchName.includes(storedName));
+          });
+        }
+
+        if (targetIndex !== -1 && mappedStatus) {
+          allLeads[targetIndex].status = mappedStatus;
+          allLeads[targetIndex].kommoLeadId = kommoLeadId;
+          allLeads[targetIndex].kommoStatusId = kommoStatusId;
+          allLeads[targetIndex].updatedAt = new Date().toISOString();
+          
+          if (mappedStatus === 'agendado' || mappedStatus === 'compareceu' || mappedStatus === 'convertido') {
+            allLeads[targetIndex].metaLeadSent = true;
+            allLeads[targetIndex].metaLeadSentAt = new Date().toISOString();
+          }
+
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount > 0) {
+        await writeLeads(allLeads);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `${updatedCount} lead(s) atualizado(s) via Kommo Webhook`,
+        updatedCount
+      });
+    } catch (err: unknown) {
+      console.error('[Kommo Webhook Error]', err);
+      // Always return 200 to Kommo so it does not disable the webhook retry mechanism
+      return res.status(200).json({ success: false, error: 'Erro interno ao processar webhook' });
+    }
+  });
+
+  // --------------------------------------------------------------------------
   // Internal Analytics & Navigation Tracking Endpoints
   // --------------------------------------------------------------------------
   app.get('/api/analytics/stats', async (_req: Request, res: Response) => {
@@ -776,7 +987,7 @@ async function startServer() {
       const leads = await readLeads();
 
       const totalLeads = leads.length;
-      const qualifiedLeads = leads.filter((l) => l.status === 'agendado' || l.status === 'convertido').length;
+      const qualifiedLeads = leads.filter((l) => l.status === 'agendado' || l.status === 'compareceu' || l.status === 'convertido').length;
       const lostLeads = leads.filter((l) => l.status === 'perdido').length;
       const totalVisitors = analytics.summary?.uniqueVisitors || 412;
       const conversionRate = totalVisitors > 0 ? ((totalLeads / totalVisitors) * 100).toFixed(1) + '%' : '6.8%';

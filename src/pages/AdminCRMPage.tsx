@@ -22,7 +22,9 @@ import {
   X,
   MapPin,
   BarChart3,
-  Navigation
+  Navigation,
+  Upload,
+  FileSpreadsheet
 } from 'lucide-react';
 import { SEOHead } from '../components/SEOHead';
 import { trackMetaEvent } from '../utils/metaConversions';
@@ -48,7 +50,7 @@ export interface StoredLead {
   referrer?: string;
   pagePath: string;
   clientIp?: string;
-  status: 'novo' | 'em_contato' | 'agendado' | 'convertido' | 'perdido' | string;
+  status: 'novo' | 'em_contato' | 'agendado' | 'compareceu' | 'convertido' | 'perdido' | string;
   notes?: string;
   metaLeadSent?: boolean;
   metaLeadSentAt?: string;
@@ -84,6 +86,10 @@ export const AdminCRMPage: React.FC = () => {
   const [activeAdminTab, setActiveAdminTab] = useState<'crm' | 'analytics' | 'mapa'>('crm');
   const [leadToDelete, setLeadToDelete] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importCsvText, setImportCsvText] = useState('');
+  const [importSyncAds, setImportSyncAds] = useState(true);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Check saved session on mount
   useEffect(() => {
@@ -157,12 +163,14 @@ export const AdminCRMPage: React.FC = () => {
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     const targetLead = leads.find((l) => l.id === leadId);
-    const isQualifyingLead = newStatus === 'agendado' || newStatus === 'convertido';
+    const isQualifyingLead = newStatus === 'agendado' || newStatus === 'compareceu' || newStatus === 'convertido';
     let metaEventId = '';
 
-    // Disparar evento para o Meta de LEAD quando for marcado como Avaliação Agendada ou Convertido
+    // Disparar evento para o Meta de LEAD quando for marcado como Avaliação Agendada, Compareceu ou Convertido
     if (targetLead && isQualifyingLead) {
-      const statusLabel = newStatus === 'agendado' ? 'Avaliação Agendada' : 'Convertido';
+      const statusLabel = 
+        newStatus === 'agendado' ? 'Avaliação Agendada' : 
+        newStatus === 'compareceu' ? 'Compareceu à Avaliação' : 'Convertido';
       try {
         const nameParts = (targetLead.name || '').trim().split(/\s+/);
         const firstName = nameParts[0] || targetLead.name;
@@ -335,6 +343,98 @@ export const AdminCRMPage: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Process and parse CSV / pasted text from Kommo
+  const handleBatchImport = async () => {
+    if (!importCsvText.trim()) {
+      setActionFeedback('Cole o conteúdo CSV ou texto dos leads do Kommo.');
+      setTimeout(() => setActionFeedback(null), 3000);
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const lines = importCsvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length === 0) {
+        setIsImporting(false);
+        return;
+      }
+
+      // Detect separator (comma, semicolon or tab)
+      const firstLine = lines[0];
+      const sep = firstLine.includes(';') ? ';' : firstLine.includes('\t') ? '\t' : ',';
+      
+      const parsedLeads: Array<{
+        name: string;
+        phone: string;
+        email: string;
+        status: string;
+        serviceInterest?: string;
+      }> = [];
+
+      // Check if line 0 is a header
+      const lowerFirst = firstLine.toLowerCase();
+      const hasHeader = lowerFirst.includes('nome') || lowerFirst.includes('name') || lowerFirst.includes('telefone') || lowerFirst.includes('phone') || lowerFirst.includes('contato');
+      const startIdx = hasHeader ? 1 : 0;
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const row = lines[i].split(sep).map((col) => col.trim().replace(/^["']|["']$/g, ''));
+        if (row.length === 0 || !row[0]) continue;
+
+        // Smart field detection or standard format (Nome, Telefone, Email, Status, Procedimento)
+        const name = row[0] || '';
+        const phone = row[1] || '';
+        const email = row[2] || '';
+        const status = row[3] || 'agendado';
+        const serviceInterest = row[4] || 'Avaliação Estética Individualizada';
+
+        if (name || phone || email) {
+          parsedLeads.push({
+            name,
+            phone,
+            email,
+            status,
+            serviceInterest
+          });
+        }
+      }
+
+      if (parsedLeads.length === 0) {
+        setActionFeedback('Nenhum contato legível foi identificado.');
+        setTimeout(() => setActionFeedback(null), 3000);
+        setIsImporting(false);
+        return;
+      }
+
+      // Dispatch to batch import backend
+      const res = await fetch('/api/leads/batch-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leads: parsedLeads,
+          syncToAds: importSyncAds
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setActionFeedback(data.message || 'Importação realizada com sucesso!');
+        setTimeout(() => setActionFeedback(null), 4000);
+        setShowImportModal(false);
+        setImportCsvText('');
+        await fetchLeads();
+      } else {
+        setActionFeedback(data.error || 'Erro na importação.');
+        setTimeout(() => setActionFeedback(null), 3500);
+      }
+    } catch (err) {
+      console.error('Import error:', err);
+      setActionFeedback('Falha ao processar arquivo.');
+      setTimeout(() => setActionFeedback(null), 3000);
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   // Filtered Leads
@@ -538,6 +638,8 @@ export const AdminCRMPage: React.FC = () => {
         return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'agendado':
         return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'compareceu':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
       case 'convertido':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'perdido':
@@ -587,6 +689,14 @@ export const AdminCRMPage: React.FC = () => {
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Atualizar</span>
+            </button>
+
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="inline-flex items-center gap-1.5 bg-[#8C7359] hover:bg-[#735D46] text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Importar do Kommo</span>
             </button>
 
             <button
@@ -932,6 +1042,7 @@ export const AdminCRMPage: React.FC = () => {
                 <option value="novo">Novo</option>
                 <option value="em_contato">Em Contato</option>
                 <option value="agendado">Avaliação Agendada</option>
+                <option value="compareceu">Compareceu à Avaliação</option>
                 <option value="convertido">Convertido</option>
                 <option value="perdido">Perdido</option>
               </select>
@@ -1044,6 +1155,7 @@ export const AdminCRMPage: React.FC = () => {
                             <option value="novo">Novo</option>
                             <option value="em_contato">Em Contato</option>
                             <option value="agendado">Avaliação Agendada</option>
+                            <option value="compareceu">Compareceu à Avaliação</option>
                             <option value="convertido">Convertido</option>
                             <option value="perdido">Perdido</option>
                           </select>
@@ -1120,7 +1232,7 @@ export const AdminCRMPage: React.FC = () => {
             </div>
 
             {/* Meta Ads CAPI Status Card */}
-            {(selectedLead.metaLeadSent || selectedLead.status === 'agendado' || selectedLead.status === 'convertido') ? (
+            {(selectedLead.metaLeadSent || selectedLead.status === 'agendado' || selectedLead.status === 'compareceu' || selectedLead.status === 'convertido') ? (
               <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex items-start gap-3">
                 <ShieldCheck className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
                 <div className="text-xs">
@@ -1287,6 +1399,7 @@ export const AdminCRMPage: React.FC = () => {
                   <option value="novo">Novo</option>
                   <option value="em_contato">Em Contato</option>
                   <option value="agendado">Avaliação Agendada (Qualificado)</option>
+                  <option value="compareceu">Compareceu à Avaliação (Qualificado)</option>
                   <option value="convertido">Convertido (Qualificado)</option>
                   <option value="perdido">Perdido</option>
                 </select>
@@ -1300,6 +1413,82 @@ export const AdminCRMPage: React.FC = () => {
                   Fechar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Importar Leads do Kommo / CSV */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-xl w-full space-y-5 shadow-2xl border border-[#E5DAD0] animate-in zoom-in-95">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#FAF6F0] border border-[#E5DAD0] flex items-center justify-center text-[#8C7359]">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-[#1F1916]">Importar Leads do Kommo</h3>
+                  <p className="text-xs text-[#5C4B44]">Sincronize contatos qualificados para calibrar Meta Ads e Google Ads</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="p-1.5 rounded-full hover:bg-[#FAF6F0] text-[#66534B] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[#1F1916] block">
+                Cole abaixo o CSV ou as linhas exportadas do Kommo:
+              </label>
+              <p className="text-[11px] text-[#66534B]">
+                Formato aceito: <code className="bg-[#FAF6F0] px-1.5 py-0.5 rounded text-[#44342E] font-mono">Nome ; WhatsApp ; Email ; Status ; Procedimento</code>
+              </p>
+              <textarea
+                value={importCsvText}
+                onChange={(e) => setImportCsvText(e.target.value)}
+                placeholder={`Exemplo:\nJuliana Souza; (11) 98765-4321; juliana@email.com; Agendamento; Endoslim\nCarla Mendes; (11) 99123-5566; carla@email.com; Compareceu; Profhilo`}
+                rows={7}
+                className="w-full p-3.5 rounded-2xl bg-[#FAF6F0] border border-[#E5DAD0] text-xs font-mono text-[#1F1916] focus:outline-none focus:border-[#8C7359] transition-colors resize-none"
+              />
+            </div>
+
+            <label className="flex items-start gap-3 p-3.5 rounded-2xl bg-blue-50 border border-blue-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={importSyncAds}
+                onChange={(e) => setImportSyncAds(e.target.checked)}
+                className="mt-0.5 rounded text-[#1967D2] focus:ring-blue-500 cursor-pointer"
+              />
+              <div className="text-xs text-blue-900">
+                <span className="font-bold block">Calibrar Inteligência da Meta e Google Ads</span>
+                <span className="text-[11px] text-blue-800">
+                  Registra automaticamente esses contatos como <strong>Leads Qualificados</strong> (com SHA-256 de telefone/e-mail) para treinar os algoritmos de tráfego pago.
+                </span>
+              </div>
+            </label>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isImporting || !importCsvText.trim()}
+                onClick={handleBatchImport}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#8C7359] hover:bg-[#735D46] text-white transition-all shadow-md disabled:opacity-50 cursor-pointer flex items-center gap-2"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{isImporting ? 'Importando e Calibrando...' : 'Importar e Qualificar'}</span>
+              </button>
             </div>
           </div>
         </div>
