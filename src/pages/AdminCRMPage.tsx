@@ -106,16 +106,25 @@ export const AdminCRMPage: React.FC = () => {
     }
   }, [isAuthenticated]);
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (showToast: boolean = false) => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/leads');
+      // Add timestamp to prevent browser HTTP caching of GET /api/leads
+      const res = await fetch(`/api/leads?_t=${Date.now()}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.leads)) {
         setLeads(data.leads);
+        if (showToast) {
+          setActionFeedback(`Lista atualizada! (${data.leads.length} lead${data.leads.length === 1 ? '' : 's'})`);
+          setTimeout(() => setActionFeedback(null), 3000);
+        }
       }
     } catch (err) {
       console.error('Error fetching leads:', err);
+      if (showToast) {
+        setActionFeedback('Erro ao atualizar lista.');
+        setTimeout(() => setActionFeedback(null), 3000);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -682,13 +691,13 @@ export const AdminCRMPage: React.FC = () => {
           <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap sm:flex-nowrap">
 
             <button
-              onClick={fetchLeads}
+              onClick={() => fetchLeads(true)}
               disabled={isLoading}
               title="Recarregar lista"
               className="inline-flex items-center gap-1.5 bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] px-3.5 py-2.5 rounded-xl border border-[#E5DAD0] text-xs font-bold transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Atualizar</span>
+              <span>{isLoading ? 'Atualizando...' : 'Atualizar'}</span>
             </button>
 
             <button
