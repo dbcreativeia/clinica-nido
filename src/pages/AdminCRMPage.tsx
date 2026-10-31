@@ -722,11 +722,11 @@ export const AdminCRMPage: React.FC = () => {
                 }
               }}
               disabled={isLoading}
-              title="Puxar leads e status atualizados diretamente da sua conta Kommo"
+              title="Calibra a inteligência de Meta Ads e Google Ads com os leads qualificados do Kommo (sem misturar com a base do site)"
               className="inline-flex items-center gap-1.5 bg-[#1F4E79] hover:bg-[#163857] text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Sincronizar Kommo</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Calibrar Ads (Kommo)</span>
             </button>
 
             <button

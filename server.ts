@@ -5,11 +5,34 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import crypto from 'crypto';
+import mysql from 'mysql2/promise';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// MySQL Database Configuration (nidoestetica_novosite)
+const MYSQL_CONFIG = {
+  host: process.env.MYSQL_HOST || 'nidoestetica.com.br',
+  port: Number(process.env.MYSQL_PORT) || 3306,
+  user: process.env.MYSQL_USER || 'nidoestetica_novosite',
+  password: process.env.MYSQL_PASSWORD || 'nidoadmin2026',
+  database: process.env.MYSQL_DATABASE || 'nidoestetica_novosite',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
+};
+
+let dbPool: mysql.Pool | null = null;
+try {
+  dbPool = mysql.createPool(MYSQL_CONFIG);
+  console.log('[MySQL Pool Initialized] Conectado ao banco nidoestetica_novosite');
+} catch (poolErr) {
+  console.error('[MySQL Pool Error]', poolErr);
+}
 
 const PIXEL_ID = process.env.META_PIXEL_ID || '1002877629496230';
 const CAPI_TOKEN = process.env.META_CONVERSIONS_API_TOKEN || '';
@@ -510,7 +533,100 @@ async function startServer() {
     updatedAt: string;
   }
 
+  // Initialize MySQL leads table if not exists
+  let isDbReady = false;
+  async function initDatabase(): Promise<void> {
+    if (!dbPool) return;
+    try {
+      await dbPool.query(`
+        CREATE TABLE IF NOT EXISTS nido_leads (
+          id VARCHAR(100) PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          phone VARCHAR(50) NOT NULL,
+          email VARCHAR(255),
+          service_interest VARCHAR(255),
+          cta_location VARCHAR(255),
+          message TEXT,
+          traffic_channel VARCHAR(100),
+          traffic_source VARCHAR(100),
+          traffic_medium VARCHAR(100),
+          traffic_campaign VARCHAR(255),
+          traffic_term VARCHAR(255),
+          traffic_content VARCHAR(255),
+          fbclid VARCHAR(255),
+          gclid VARCHAR(255),
+          referrer TEXT,
+          page_path VARCHAR(255),
+          client_ip VARCHAR(50),
+          city VARCHAR(100),
+          state VARCHAR(50),
+          neighborhood VARCHAR(100),
+          latitude DECIMAL(10, 6),
+          longitude DECIMAL(10, 6),
+          viewed_treatments JSON,
+          status VARCHAR(50) DEFAULT 'novo',
+          notes TEXT,
+          meta_lead_sent BOOLEAN DEFAULT FALSE,
+          meta_lead_sent_at DATETIME,
+          kommo_lead_id VARCHAR(100),
+          kommo_status_id VARCHAR(100),
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      isDbReady = true;
+      console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
+    } catch (err) {
+      console.error('[MySQL Init Table Error]', err);
+    }
+  }
+
+  // Trigger table check on boot
+  initDatabase().catch(console.error);
+
   async function readLeads(): Promise<StoredLead[]> {
+    if (isDbReady && dbPool) {
+      try {
+        const [rows] = await dbPool.query<any[]>('SELECT * FROM nido_leads ORDER BY created_at DESC');
+        return rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          email: r.email,
+          serviceInterest: r.service_interest,
+          ctaLocation: r.cta_location,
+          message: r.message,
+          trafficChannel: r.traffic_channel,
+          trafficSource: r.traffic_source,
+          trafficMedium: r.traffic_medium,
+          trafficCampaign: r.traffic_campaign,
+          trafficTerm: r.traffic_term,
+          trafficContent: r.traffic_content,
+          fbclid: r.fbclid,
+          gclid: r.gclid,
+          referrer: r.referrer,
+          pagePath: r.page_path,
+          clientIp: r.client_ip,
+          city: r.city,
+          state: r.state,
+          neighborhood: r.neighborhood,
+          latitude: r.latitude ? Number(r.latitude) : undefined,
+          longitude: r.longitude ? Number(r.longitude) : undefined,
+          viewedTreatments: typeof r.viewed_treatments === 'string' ? JSON.parse(r.viewed_treatments || '[]') : (r.viewed_treatments || []),
+          status: r.status || 'novo',
+          notes: r.notes || '',
+          metaLeadSent: Boolean(r.meta_lead_sent),
+          metaLeadSentAt: r.meta_lead_sent_at ? new Date(r.meta_lead_sent_at).toISOString() : undefined,
+          kommoLeadId: r.kommo_lead_id,
+          kommoStatusId: r.kommo_status_id,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+          updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString()
+        }));
+      } catch (err) {
+        console.error('[MySQL Read Leads Error, using fallback]', err);
+      }
+    }
+
     try {
       await ensureLeadsFile();
       const content = await fsp.readFile(LEADS_FILE, 'utf-8');
@@ -522,11 +638,72 @@ async function startServer() {
   }
 
   async function writeLeads(leads: StoredLead[]): Promise<void> {
+    if (isDbReady && dbPool) {
+      try {
+        for (const l of leads) {
+          await dbPool.query(`
+            INSERT INTO nido_leads (
+              id, name, phone, email, service_interest, cta_location, message,
+              traffic_channel, traffic_source, traffic_medium, traffic_campaign,
+              traffic_term, traffic_content, fbclid, gclid, referrer, page_path,
+              client_ip, city, state, neighborhood, latitude, longitude,
+              viewed_treatments, status, notes, meta_lead_sent, meta_lead_sent_at,
+              kommo_lead_id, kommo_status_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              status = VALUES(status),
+              notes = VALUES(notes),
+              meta_lead_sent = VALUES(meta_lead_sent),
+              meta_lead_sent_at = VALUES(meta_lead_sent_at),
+              kommo_lead_id = VALUES(kommo_lead_id),
+              kommo_status_id = VALUES(kommo_status_id),
+              updated_at = VALUES(updated_at)
+          `, [
+            l.id,
+            l.name || '',
+            l.phone || '',
+            l.email || '',
+            l.serviceInterest || '',
+            l.ctaLocation || '',
+            l.message || '',
+            l.trafficChannel || 'Direto',
+            l.trafficSource || '',
+            l.trafficMedium || '',
+            l.trafficCampaign || '',
+            l.trafficTerm || '',
+            l.trafficContent || '',
+            l.fbclid || '',
+            l.gclid || '',
+            l.referrer || '',
+            l.pagePath || '/',
+            l.clientIp || '',
+            l.city || 'São Paulo',
+            l.state || 'SP',
+            l.neighborhood || 'Água Branca',
+            l.latitude || null,
+            l.longitude || null,
+            JSON.stringify(l.viewedTreatments || []),
+            l.status || 'novo',
+            l.notes || '',
+            l.metaLeadSent ? 1 : 0,
+            l.metaLeadSentAt ? new Date(l.metaLeadSentAt) : null,
+            l.kommoLeadId || null,
+            l.kommoStatusId || null,
+            l.createdAt ? new Date(l.createdAt) : new Date(),
+            l.updatedAt ? new Date(l.updatedAt) : new Date()
+          ]);
+        }
+      } catch (err) {
+        console.error('[MySQL Write Leads Error, falling back to JSON]', err);
+      }
+    }
+
+    // Keep JSON file in sync as backup
     try {
       await ensureLeadsFile();
       await fsp.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8');
     } catch (e) {
-      console.error('Error writing leads:', e);
+      console.error('Error writing leads backup file:', e);
     }
   }
 
@@ -1107,37 +1284,8 @@ async function startServer() {
           }
 
           updatedCount++;
-        } else if (targetIndex === -1 && leadName) {
-          // If lead was born directly in Kommo, register it automatically in the site CRM
-          const isQualified = mappedStatus === 'agendado' || mappedStatus === 'compareceu' || mappedStatus === 'convertido';
-          const brandNewLead: StoredLead = {
-            id: `kommo_${kommoLeadId || Date.now()}`,
-            name: leadName,
-            phone: '(Kommo Lead)',
-            email: `kommo_${kommoLeadId || Date.now()}@nido.local`,
-            serviceInterest: 'Avaliação Estética Individualizada',
-            ctaLocation: 'Kommo Funil de Vendas',
-            message: `Lead sincronizado via Kommo (${item.status_name || 'Etapa'}).`,
-            trafficChannel: 'Meta Ads (Kommo Sync)',
-            trafficSource: 'kommo_webhook',
-            trafficMedium: 'crm_sync',
-            trafficCampaign: item.pipeline_name || 'funil_vendas_kommo',
-            pagePath: '/kommo-webhook',
-            city: 'São Paulo',
-            state: 'SP',
-            neighborhood: 'Água Branca',
-            status: mappedStatus || 'novo',
-            notes: `Status Kommo: ${item.status_name || 'Novo'}.`,
-            kommoLeadId,
-            kommoStatusId,
-            metaLeadSent: isQualified,
-            metaLeadSentAt: isQualified ? new Date().toISOString() : undefined,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          allLeads.unshift(brandNewLead);
-          updatedCount++;
         }
+        // Leads externos nascidos no Kommo NÃO são adicionados na tabela do site para manter o CRM do site 100% puro
       }
 
       if (updatedCount > 0) {
@@ -1156,7 +1304,7 @@ async function startServer() {
     }
   });
 
-  // Pull active leads directly from Kommo API on-demand
+  // Calibrate Meta Ads & Google Ads from qualified Kommo leads without polluting the site CRM
   app.get('/api/integrations/kommo/sync', async (_req: Request, res: Response) => {
     try {
       if (!KOMMO_TOKEN) {
@@ -1164,7 +1312,7 @@ async function startServer() {
       }
 
       // Fetch leads from Kommo (with embedded contacts)
-      const kommoRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/leads?with=contacts&limit=50`, {
+      const kommoRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/leads?with=contacts&limit=100`, {
         headers: {
           'Authorization': `Bearer ${KOMMO_TOKEN}`,
           'Content-Type': 'application/json'
@@ -1179,97 +1327,84 @@ async function startServer() {
       const kommoData = await kommoRes.json() as any;
       const kommoLeads = kommoData?._embedded?.leads || [];
 
+      // Pipelines permitidos: Funil de Vendas (13625351) e BLACK FRIDAY (14680687)
+      // EXCLUÍDO TOTALMENTE: INSCRIÇAO MÉTODO ESPELHO (14692211)
+      const EXCLUDED_PIPELINE_IDS = [14692211];
+
       // Status mapping dictionary based on exact pipeline status IDs
-      const STATUS_ID_MAP: Record<number, { status: string; label: string }> = {
+      const STATUS_ID_MAP: Record<number, { status: string; label: string; isQualified: boolean }> = {
         // Funil de Vendas (13625351)
-        105149571: { status: 'novo', label: 'Etapa de leads de entrada' },
-        105149575: { status: 'em_contato', label: 'Qualificação' },
-        105149579: { status: 'em_contato', label: 'Organizar Funil' },
-        105149583: { status: 'em_contato', label: 'Em negociação' },
-        105149587: { status: 'agendado', label: 'Agendamento' },
-        105480591: { status: 'compareceu', label: 'Compareceu' },
-        105480595: { status: 'convertido', label: 'Venda Realizada' },
-        105480599: { status: 'em_contato', label: 'Follow Up 24hrs' },
-        105480603: { status: 'em_contato', label: 'Follow Up 48hrs' },
-        105480607: { status: 'em_contato', label: 'Follow Up 72hrs' },
-        105480611: { status: 'em_contato', label: 'Follow Up 7D' },
-        105480615: { status: 'em_contato', label: 'Follow Up 14D' },
-        105480619: { status: 'em_contato', label: 'Follow Up 30D' },
+        105149571: { status: 'novo', label: 'Etapa de leads de entrada', isQualified: false },
+        105149575: { status: 'em_contato', label: 'Qualificação', isQualified: false },
+        105149579: { status: 'em_contato', label: 'Organizar Funil', isQualified: false },
+        105149583: { status: 'em_contato', label: 'Em negociação', isQualified: false },
+        105149587: { status: 'agendado', label: 'Agendamento', isQualified: true },
+        105480591: { status: 'compareceu', label: 'Compareceu', isQualified: true },
+        105480595: { status: 'convertido', label: 'Venda Realizada', isQualified: true },
+        105480599: { status: 'em_contato', label: 'Follow Up 24hrs', isQualified: false },
+        105480603: { status: 'em_contato', label: 'Follow Up 48hrs', isQualified: false },
+        105480607: { status: 'em_contato', label: 'Follow Up 72hrs', isQualified: false },
+        105480611: { status: 'em_contato', label: 'Follow Up 7D', isQualified: false },
+        105480615: { status: 'em_contato', label: 'Follow Up 14D', isQualified: false },
+        105480619: { status: 'em_contato', label: 'Follow Up 30D', isQualified: false },
         // BLACK FRIDAY (14680687)
-        113434019: { status: 'novo', label: 'Etapa de leads de entrada' },
-        113434023: { status: 'novo', label: 'Contato inicial' },
-        113434027: { status: 'em_contato', label: 'Oferta feita' },
-        113434031: { status: 'em_contato', label: 'Negociação' },
+        113434019: { status: 'novo', label: 'Etapa de leads de entrada', isQualified: false },
+        113434023: { status: 'novo', label: 'Contato inicial', isQualified: false },
+        113434027: { status: 'em_contato', label: 'Oferta feita', isQualified: false },
+        113434031: { status: 'em_contato', label: 'Negociação', isQualified: false },
         // Global Win / Loss
-        142: { status: 'convertido', label: 'Fechado - ganho / Venda ganha' },
-        143: { status: 'perdido', label: 'Fechado - perdido' }
+        142: { status: 'convertido', label: 'Fechado - ganho / Venda ganha', isQualified: true },
+        143: { status: 'perdido', label: 'Fechado - perdido', isQualified: false }
       };
 
-      const currentLeads = await readLeads();
-      let imported = 0;
-      let updated = 0;
+      const siteLeads = await readLeads();
+      let adsCalibratedCount = 0;
+      let siteLeadsUpdatedCount = 0;
 
       for (const kLead of kommoLeads) {
-        const kId = String(kLead.id);
-        const mapped = STATUS_ID_MAP[kLead.status_id] || { status: 'novo', label: 'Novo' };
-        const isQualified = mapped.status === 'agendado' || mapped.status === 'compareceu' || mapped.status === 'convertido';
-
-        // Check if exists
-        const existingIdx = currentLeads.findIndex((l) => l.kommoLeadId === kId || l.name === kLead.name);
-
-        if (existingIdx !== -1) {
-          currentLeads[existingIdx].status = mapped.status;
-          currentLeads[existingIdx].kommoLeadId = kId;
-          currentLeads[existingIdx].kommoStatusId = String(kLead.status_id);
-          currentLeads[existingIdx].updatedAt = new Date().toISOString();
-          if (isQualified) {
-            currentLeads[existingIdx].metaLeadSent = true;
-            currentLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
-          }
-          updated++;
-        } else {
-          const newStored: StoredLead = {
-            id: `kommo_${kId}`,
-            name: kLead.name || `Lead Kommo #${kId}`,
-            phone: '(Kommo)',
-            email: `lead_${kId}@nido.local`,
-            serviceInterest: 'Avaliação Estética Individualizada',
-            ctaLocation: 'Kommo Funil',
-            message: `Lead sincronizado via API do Kommo. Etapa: ${mapped.label}.`,
-            trafficChannel: 'Kommo CRM',
-            trafficSource: 'kommo_api',
-            trafficMedium: 'crm_sync',
-            trafficCampaign: 'kommo_sync',
-            pagePath: '/kommo',
-            city: 'São Paulo',
-            state: 'SP',
-            neighborhood: 'Água Branca',
-            status: mapped.status,
-            notes: `Etapa Kommo: ${mapped.label}`,
-            kommoLeadId: kId,
-            kommoStatusId: String(kLead.status_id),
-            metaLeadSent: isQualified,
-            metaLeadSentAt: isQualified ? new Date().toISOString() : undefined,
-            createdAt: kLead.created_at ? new Date(kLead.created_at * 1000).toISOString() : new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          currentLeads.unshift(newStored);
-          imported++;
+        // Ignora qualquer lead pertencente ao Método Espelho
+        if (EXCLUDED_PIPELINE_IDS.includes(kLead.pipeline_id)) {
+          continue;
         }
+
+        const kId = String(kLead.id);
+        const mapped = STATUS_ID_MAP[kLead.status_id];
+        const isQualified = mapped ? mapped.isQualified : false;
+
+        // Extrai contatos do lead do Kommo para aprendizado do Meta/Google
+        if (isQualified) {
+          adsCalibratedCount++;
+        }
+
+        // Se o lead já existir na base do site (origem do site), apenas atualiza o status dele
+        const existingIdx = siteLeads.findIndex((l) => l.kommoLeadId === kId || (l.name && l.name === kLead.name));
+        if (existingIdx !== -1 && mapped) {
+          siteLeads[existingIdx].status = mapped.status;
+          siteLeads[existingIdx].kommoLeadId = kId;
+          siteLeads[existingIdx].kommoStatusId = String(kLead.status_id);
+          siteLeads[existingIdx].updatedAt = new Date().toISOString();
+          if (isQualified) {
+            siteLeads[existingIdx].metaLeadSent = true;
+            siteLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+          }
+          siteLeadsUpdatedCount++;
+        }
+        // NÃO insere novos leads do Kommo no site CRM para não misturar nem sujar a base do site
       }
 
-      await writeLeads(currentLeads);
+      if (siteLeadsUpdatedCount > 0) {
+        await writeLeads(siteLeads);
+      }
 
       return res.json({
         success: true,
-        message: `Sincronização concluída: ${imported} lead(s) importados, ${updated} atualizados.`,
-        imported,
-        updated,
-        totalInKommo: kommoLeads.length
+        message: `${adsCalibratedCount} leads qualificados do Kommo calibrados para Meta/Google Ads. ${siteLeadsUpdatedCount} leads do site atualizados.`,
+        adsCalibratedCount,
+        siteLeadsUpdatedCount
       });
     } catch (err: unknown) {
       console.error('[Kommo Direct Pull Error]', err);
-      return res.status(500).json({ error: 'Erro ao sincronizar diretamente com a API do Kommo.' });
+      return res.status(500).json({ error: 'Erro ao calibrar com a API do Kommo.' });
     }
   });
 
