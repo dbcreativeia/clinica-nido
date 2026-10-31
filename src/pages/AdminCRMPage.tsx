@@ -60,6 +60,19 @@ export interface StoredLead {
   latitude?: number;
   longitude?: number;
   viewedTreatments?: string[];
+  sessionJourney?: {
+    startedAt?: string;
+    totalDurationSeconds?: number;
+    totalPageViews?: number;
+    deviceType?: string;
+    browser?: string;
+    steps?: Array<{
+      path: string;
+      title: string;
+      enteredAt: number;
+      durationSeconds: number;
+    }>;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -1423,6 +1436,59 @@ export const AdminCRMPage: React.FC = () => {
                   <span className="font-mono text-[11px] text-[#44342E]">{selectedLead.pagePath}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Jornada de Navegação & Tempo de Permanência do Lead */}
+            <div className="bg-[#FAF6F0] p-4 rounded-xl border border-[#E5DAD0] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#1F1916] uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#8C7359]" />
+                  Jornada de Navegação no Site ({selectedLead.sessionJourney?.totalDurationSeconds ? `${Math.floor(selectedLead.sessionJourney.totalDurationSeconds / 60)}m ${selectedLead.sessionJourney.totalDurationSeconds % 60}s` : 'Tempo medido'})
+                </span>
+                {selectedLead.sessionJourney?.deviceType && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-[#44342E] border border-[#E5DAD0]">
+                    {selectedLead.sessionJourney.deviceType} • {selectedLead.sessionJourney.browser || 'Web'}
+                  </span>
+                )}
+              </div>
+
+              {selectedLead.sessionJourney?.steps && selectedLead.sessionJourney.steps.length > 0 ? (
+                <div className="space-y-2 pt-1">
+                  {selectedLead.sessionJourney.steps.map((step, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs bg-white p-2.5 rounded-lg border border-[#EFE6DC]">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-[#FAF6F0] text-[#8C7359] font-bold text-[10px] flex items-center justify-center border border-[#E5DAD0]">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <p className="font-semibold text-[#1F1916]">{step.title || step.path}</p>
+                          <p className="text-[10px] font-mono text-[#8C7359]">{step.path}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] font-bold text-[#44342E] bg-[#FAF6F0] px-2 py-1 rounded-md border border-[#E5DAD0]">
+                          {step.durationSeconds >= 60 
+                            ? `${Math.floor(step.durationSeconds / 60)}m ${step.durationSeconds % 60}s`
+                            : `${step.durationSeconds || 1}s`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center text-[11px] text-[#5C4B44] pt-1 px-1">
+                    <span>Total de páginas navegadas: <strong>{selectedLead.sessionJourney.totalPageViews || selectedLead.sessionJourney.steps.length}</strong></span>
+                    <span>Permanência total: <strong>{Math.floor((selectedLead.sessionJourney.totalDurationSeconds || 0) / 60)} min e {(selectedLead.sessionJourney.totalDurationSeconds || 0) % 60} seg</strong></span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-[#5C4B44] bg-white p-3 rounded-lg border border-[#EFE6DC]">
+                  <p>Lead cadastrado diretamente via WhatsApp ou página de entrada (<strong>{selectedLead.pagePath}</strong>).</p>
+                  {selectedLead.viewedTreatments && selectedLead.viewedTreatments.length > 0 && (
+                    <p className="mt-1 text-[11px] text-[#8C7359]">
+                      Tratamentos de interesse explorados: <strong>{selectedLead.viewedTreatments.join(', ')}</strong>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Status change in modal */}

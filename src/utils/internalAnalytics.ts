@@ -295,6 +295,148 @@ export function getSessionViewedTreatments(): string[] {
 }
 
 /**
+ * Page Journey & Duration Tracking
+ */
+export interface PageVisitStep {
+  path: string;
+  title: string;
+  enteredAt: number; // timestamp ms
+  durationSeconds: number;
+}
+
+export interface SessionJourney {
+  startedAt: string;
+  totalDurationSeconds: number;
+  totalPageViews: number;
+  steps: PageVisitStep[];
+  deviceType: 'Mobile' | 'Desktop' | 'Tablet';
+  browser: string;
+}
+
+const SESSION_JOURNEY_KEY = 'nido_session_journey';
+let currentPageStart = Date.now();
+let currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+
+function detectDeviceInfo(): { deviceType: 'Mobile' | 'Desktop' | 'Tablet'; browser: string } {
+  if (typeof window === 'undefined') return { deviceType: 'Desktop', browser: 'Unknown' };
+  const ua = navigator.userAgent;
+  let deviceType: 'Mobile' | 'Desktop' | 'Tablet' = 'Desktop';
+  if (/iPad|tablet/i.test(ua)) {
+    deviceType = 'Tablet';
+  } else if (/Mobi|Android|iPhone/i.test(ua)) {
+    deviceType = 'Mobile';
+  }
+
+  let browser = 'Navegador Web';
+  if (ua.includes('Instagram')) browser = 'Instagram In-App Browser';
+  else if (ua.includes('FBAN') || ua.includes('FBAV')) browser = 'Facebook In-App Browser';
+  else if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Google Chrome';
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Apple Safari';
+  else if (ua.includes('Edg')) browser = 'Microsoft Edge';
+  else if (ua.includes('Firefox')) browser = 'Mozilla Firefox';
+
+  return { deviceType, browser };
+}
+
+/**
+ * Call on each route change to record previous page duration and push to session journey
+ */
+export function recordRouteNavigation(newPath: string, newTitle: string): void {
+  if (typeof window === 'undefined') return;
+
+  const now = Date.now();
+  const timeSpentOnPrevPage = Math.max(1, Math.round((now - currentPageStart) / 1000));
+
+  try {
+    const raw = sessionStorage.getItem(SESSION_JOURNEY_KEY);
+    const journey: SessionJourney = raw ? JSON.parse(raw) : {
+      startedAt: new Date().toISOString(),
+      totalDurationSeconds: 0,
+      totalPageViews: 0,
+      steps: [],
+      ...detectDeviceInfo()
+    };
+
+    // If there is an existing step for the previous page, record duration
+    if (journey.steps.length > 0) {
+      const lastStep = journey.steps[journey.steps.length - 1];
+      if (lastStep.path === currentPath) {
+        lastStep.durationSeconds += timeSpentOnPrevPage;
+      }
+    } else if (currentPath) {
+      // First recorded step
+      journey.steps.push({
+        path: currentPath,
+        title: document.title || 'Início',
+        enteredAt: currentPageStart,
+        durationSeconds: timeSpentOnPrevPage
+      });
+    }
+
+    // Add new page step
+    journey.steps.push({
+      path: newPath,
+      title: newTitle || newPath,
+      enteredAt: now,
+      durationSeconds: 0
+    });
+
+    journey.totalPageViews = journey.steps.length;
+    journey.totalDurationSeconds = journey.steps.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
+
+    sessionStorage.setItem(SESSION_JOURNEY_KEY, JSON.stringify(journey));
+  } catch {
+    // Ignore storage errors
+  }
+
+  currentPageStart = now;
+  currentPath = newPath;
+}
+
+/**
+ * Gets the current session journey snapshot with up-to-the-second duration for lead attribution
+ */
+export function getSessionJourney(): SessionJourney {
+  const fallback: SessionJourney = {
+    startedAt: new Date().toISOString(),
+    totalDurationSeconds: 0,
+    totalPageViews: 1,
+    steps: [{ path: currentPath, title: 'Início', enteredAt: currentPageStart, durationSeconds: 0 }],
+    ...detectDeviceInfo()
+  };
+
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const raw = sessionStorage.getItem(SESSION_JOURNEY_KEY);
+    const journey: SessionJourney = raw ? JSON.parse(raw) : fallback;
+
+    // Flush active time on current page
+    const now = Date.now();
+    const activeCurrentTime = Math.max(1, Math.round((now - currentPageStart) / 1000));
+    if (journey.steps.length > 0) {
+      const last = journey.steps[journey.steps.length - 1];
+      if (last.path === currentPath) {
+        last.durationSeconds = Math.max(last.durationSeconds || 0, activeCurrentTime);
+      }
+    } else {
+      journey.steps.push({
+        path: currentPath,
+        title: document.title || currentPath,
+        enteredAt: currentPageStart,
+        durationSeconds: activeCurrentTime
+      });
+    }
+
+    journey.totalDurationSeconds = journey.steps.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
+    journey.totalPageViews = journey.steps.length;
+    return journey;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Tracks CTA clicks (WhatsApp, Agendar, Como Chegar / Rotas)
  */
 export async function trackCTAClick(label: string, location?: string): Promise<void> {
@@ -317,3 +459,4 @@ export async function trackCTAClick(label: string, location?: string): Promise<v
     // Non-blocking
   }
 }
+

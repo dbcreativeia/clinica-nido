@@ -20,6 +20,7 @@ import { AdminCRMPage } from './pages/AdminCRMPage';
 
 import { trackMetaPageView } from './utils/metaConversions';
 import { initTrafficAttribution } from './utils/trafficSource';
+import { recordRouteNavigation } from './utils/internalAnalytics';
 
 // Main Application shell with #admin detection and traffic attribution
 function AppContent() {
@@ -38,13 +39,14 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Track page views and initialize traffic attribution
+  // Track page views, navigation journey and initialize traffic attribution
   useEffect(() => {
     window.scrollTo(0, 0);
     // Initialize attribution and _fbc before firing PageView
     initTrafficAttribution();
     if (window.location.hash !== '#admin') {
       trackMetaPageView(pathname);
+      recordRouteNavigation(pathname, document.title || pathname);
     }
   }, [pathname]);
 

@@ -1,1 +1,35 @@
-[]
+[
+  {
+    "id": "lead_1793464110880_051538",
+    "name": "Paciente Teste Persistencia MySQL",
+    "phone": "11977776666",
+    "email": "teste.banco@nidoestetica.com.br",
+    "serviceInterest": "Endoslim",
+    "ctaLocation": "Site",
+    "message": "",
+    "trafficChannel": "Direto",
+    "trafficSource": "google",
+    "trafficMedium": "none",
+    "trafficCampaign": "campanha_persistente",
+    "trafficTerm": "",
+    "trafficContent": "",
+    "fbclid": "",
+    "gclid": "",
+    "referrer": "",
+    "pagePath": "/",
+    "clientIp": "127.0.0.1",
+    "city": "Barueri",
+    "state": "SP",
+    "neighborhood": "Alphaville",
+    "latitude": -23.4988,
+    "longitude": -46.8522,
+    "viewedTreatments": [],
+    "status": "novo",
+    "notes": "",
+    "metaLeadSent": false,
+    "kommoLeadId": null,
+    "kommoStatusId": null,
+    "createdAt": "2026-10-31T16:28:30.000Z",
+    "updatedAt": "2026-10-31T16:28:30.000Z"
+  }
+]

@@ -7,7 +7,7 @@ import {
 } from '../utils/whatsapp';
 import { getStoredTrafficAttribution, initTrafficAttribution } from '../utils/trafficSource';
 import { trackMetaEvent } from '../utils/metaConversions';
-import { getVisitorLocation, getSessionViewedTreatments } from '../utils/internalAnalytics';
+import { getVisitorLocation, getSessionViewedTreatments, getSessionJourney } from '../utils/internalAnalytics';
 
 interface ModalDetail {
   message: string;
@@ -119,9 +119,10 @@ export const LeadCaptureModal: React.FC = () => {
       // Personalized WhatsApp message
       const personalizedMessage = formatPersonalizedWhatsAppMessage(cleanName, rawMessage);
 
-      // Geo location & browsing history
+      // Geo location, browsing history & detailed navigation journey
       const visitorGeo = await getVisitorLocation();
       const viewedTreatments = getSessionViewedTreatments();
+      const sessionJourney = getSessionJourney();
 
       // Save lead locally as immediate fallback
       const leadData = {
@@ -147,6 +148,7 @@ export const LeadCaptureModal: React.FC = () => {
         latitude: visitorGeo.latitude,
         longitude: visitorGeo.longitude,
         viewedTreatments,
+        sessionJourney,
         lgpdConsent: true,
         lgpdConsentAt: new Date().toISOString()
       };

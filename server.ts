@@ -527,6 +527,19 @@ async function startServer() {
     latitude?: number;
     longitude?: number;
     viewedTreatments?: string[];
+    sessionJourney?: {
+      startedAt?: string;
+      totalDurationSeconds?: number;
+      totalPageViews?: number;
+      deviceType?: string;
+      browser?: string;
+      steps?: Array<{
+        path: string;
+        title: string;
+        enteredAt: number;
+        durationSeconds: number;
+      }>;
+    };
     kommoLeadId?: string;
     kommoStatusId?: string;
     createdAt: string;
@@ -564,6 +577,7 @@ async function startServer() {
           latitude DECIMAL(10, 6),
           longitude DECIMAL(10, 6),
           viewed_treatments JSON,
+          session_journey JSON,
           status VARCHAR(50) DEFAULT 'novo',
           notes TEXT,
           meta_lead_sent BOOLEAN DEFAULT FALSE,
@@ -574,8 +588,16 @@ async function startServer() {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      // Add session_journey column if table was previously created without it
+      try {
+        await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN session_journey JSON AFTER viewed_treatments;`);
+      } catch {
+        // Already exists
+      }
+
       isDbReady = true;
-      console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
+      console.log('[MySQL Table Verified] Tabela nido_leads pronta com session_journey.');
     } catch (err) {
       console.error('[MySQL Init Table Error]', err);
     }
@@ -613,6 +635,7 @@ async function startServer() {
           latitude: r.latitude ? Number(r.latitude) : undefined,
           longitude: r.longitude ? Number(r.longitude) : undefined,
           viewedTreatments: typeof r.viewed_treatments === 'string' ? JSON.parse(r.viewed_treatments || '[]') : (r.viewed_treatments || []),
+          sessionJourney: typeof r.session_journey === 'string' ? JSON.parse(r.session_journey || 'null') : (r.session_journey || undefined),
           status: r.status || 'novo',
           notes: r.notes || '',
           metaLeadSent: Boolean(r.meta_lead_sent),
@@ -647,10 +670,11 @@ async function startServer() {
               traffic_channel, traffic_source, traffic_medium, traffic_campaign,
               traffic_term, traffic_content, fbclid, gclid, referrer, page_path,
               client_ip, city, state, neighborhood, latitude, longitude,
-              viewed_treatments, status, notes, meta_lead_sent, meta_lead_sent_at,
+              viewed_treatments, session_journey, status, notes, meta_lead_sent, meta_lead_sent_at,
               kommo_lead_id, kommo_status_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
+              session_journey = VALUES(session_journey),
               status = VALUES(status),
               notes = VALUES(notes),
               meta_lead_sent = VALUES(meta_lead_sent),
@@ -683,6 +707,7 @@ async function startServer() {
             l.latitude || null,
             l.longitude || null,
             JSON.stringify(l.viewedTreatments || []),
+            l.sessionJourney ? JSON.stringify(l.sessionJourney) : null,
             l.status || 'novo',
             l.notes || '',
             l.metaLeadSent ? 1 : 0,
@@ -762,7 +787,8 @@ async function startServer() {
         neighborhood,
         latitude,
         longitude,
-        viewedTreatments = []
+        viewedTreatments = [],
+        sessionJourney
       } = req.body;
 
       if (!name || !phone || !email) {
@@ -817,6 +843,7 @@ async function startServer() {
         latitude: leadLat,
         longitude: leadLng,
         viewedTreatments,
+        sessionJourney,
         status: 'novo',
         notes: '',
         createdAt: new Date().toISOString(),
