@@ -1592,9 +1592,8 @@ async function startServer() {
             updatedSiteLeadMap.set(targetLeadId, kUpdatedAt);
 
             if (kLead.is_deleted) {
-              siteLeads[existingIdx].status = 'perdido';
-              siteLeads[existingIdx].notes = 'Lead excluído na conta Kommo.';
-              siteLeads[existingIdx].updatedAt = new Date().toISOString();
+              // Se foi excluído no Kommo, remove do CRM do site permanentemente
+              siteLeads.splice(existingIdx, 1);
               siteLeadsUpdatedCount++;
             } else if (mapped) {
               siteLeads[existingIdx].status = mapped.status;
@@ -1612,7 +1611,22 @@ async function startServer() {
       }
 
       if (siteLeadsUpdatedCount > 0) {
+        // Salva os leads restantes e também remove do banco MySQL os que sumiram
         await writeLeads(siteLeads);
+        if (isDbReady && dbPool) {
+          try {
+            const currentIds = siteLeads.map((l) => l.id);
+            if (currentIds.length > 0) {
+              // Deleta da base MySQL tudo o que não está mais no array
+              const placeholders = currentIds.map(() => '?').join(',');
+              await dbPool.query(`DELETE FROM nido_leads WHERE id NOT IN (${placeholders})`, currentIds);
+            } else {
+              await dbPool.query('DELETE FROM nido_leads');
+            }
+          } catch (dbDelErr) {
+            console.error('[MySQL Purge Deleted Leads Error]', dbDelErr);
+          }
+        }
       }
 
       return res.json({
