@@ -418,7 +418,7 @@ async function startServer() {
   // --------------------------------------------------------------------------
   // CRM Leads Storage & Management
   // --------------------------------------------------------------------------
-  const DATA_DIR = path.resolve(__dirname, 'data');
+  const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(__dirname, 'data');
   const LEADS_FILE = path.resolve(DATA_DIR, 'leads.json');
   const ANALYTICS_FILE = path.resolve(DATA_DIR, 'analytics.json');
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'nidoadmin2026';
