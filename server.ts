@@ -1275,15 +1275,19 @@ async function startServer() {
   app.delete('/api/leads/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      let leads = await readLeads();
-      const initialLength = leads.length;
-      leads = leads.filter((l) => l.id !== id);
 
-      if (leads.length === initialLength) {
-        return res.status(404).json({ error: 'Lead não encontrado' });
+      if (isDbReady && dbPool) {
+        try {
+          await dbPool.query('DELETE FROM nido_leads WHERE id = ?', [id]);
+        } catch (dbErr) {
+          console.error('[MySQL Delete Error]', dbErr);
+        }
       }
 
+      let leads = await readLeads();
+      leads = leads.filter((l) => l.id !== id);
       await writeLeads(leads);
+
       return res.json({ success: true, message: 'Lead excluído com sucesso' });
     } catch (err: unknown) {
       console.error('[Delete Lead Error]', err);
