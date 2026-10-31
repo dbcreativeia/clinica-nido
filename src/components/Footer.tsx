@@ -116,7 +116,7 @@ export const Footer: React.FC = () => {
             </button>
           </div>
           <p className="text-[11px] text-[#C4B1A0]/70">
-            © 2026 Clínica Nidô Estética Avançada. Todos os direitos reservados.
+            © Clínica Nidô Estética Avançada. Todos os direitos reservados.
           </p>
         </div>
       </div>
