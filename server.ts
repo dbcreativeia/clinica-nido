@@ -581,7 +581,8 @@ async function startServer() {
         ? rawIp[0]
         : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '');
 
-      // Realistic geographic attribution pool around SP Metro if not specified
+      // Only use geoPool fallback if the client did NOT provide coordinates
+      const hasExactCoords = typeof latitude === 'number' && typeof longitude === 'number';
       const geoPool = [
         { city: 'São Paulo', state: 'SP', neighborhood: 'Jardins', latitude: -23.5673, longitude: -46.6692 },
         { city: 'São Paulo', state: 'SP', neighborhood: 'Moema', latitude: -23.6041, longitude: -46.6668 },
@@ -592,11 +593,11 @@ async function startServer() {
       ];
       const randomGeo = geoPool[Math.floor(Math.random() * geoPool.length)];
 
-      const leadCity = city || randomGeo.city;
-      const leadState = state || randomGeo.state;
-      const leadNeighborhood = neighborhood || randomGeo.neighborhood;
-      const leadLat = typeof latitude === 'number' ? latitude : randomGeo.latitude;
-      const leadLng = typeof longitude === 'number' ? longitude : randomGeo.longitude;
+      const leadCity = city || (hasExactCoords ? 'São Paulo' : randomGeo.city);
+      const leadState = state || (hasExactCoords ? 'SP' : randomGeo.state);
+      const leadNeighborhood = neighborhood || (hasExactCoords ? 'GPS Exato' : randomGeo.neighborhood);
+      const leadLat = hasExactCoords ? latitude : randomGeo.latitude;
+      const leadLng = hasExactCoords ? longitude : randomGeo.longitude;
 
       const newLead: StoredLead = {
         id: `lead_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,

@@ -91,7 +91,8 @@ export function requestBrowserLocation(): Promise<VisitorLocation | null> {
 }
 
 /**
- * Resolves visitor geographic location (cached in sessionStorage)
+ * Resolves visitor geographic location using device GPS (navigator.geolocation)
+ * with graceful fallback to IP-based location and cached in sessionStorage.
  */
 export async function getVisitorLocation(): Promise<VisitorLocation> {
   if (typeof window === 'undefined') {
@@ -104,15 +105,88 @@ export async function getVisitorLocation(): Promise<VisitorLocation> {
     };
   }
 
+  // 1. Check existing session cache
   try {
     const cached = sessionStorage.getItem(GEO_STORAGE_KEY);
     if (cached) {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached);
+      // If cached location has real GPS coordinates, reuse it
+      if (parsed && typeof parsed.latitude === 'number' && typeof parsed.longitude === 'number') {
+        return parsed;
+      }
     }
   } catch {
     // Ignore storage parse error
   }
 
+  // 2. Attempt real device GPS via HTML5 Geolocation API (high accuracy)
+  if (navigator && 'geolocation' in navigator) {
+    try {
+      const gpsPosition = await new Promise<GeolocationPosition | null>((resolve) => {
+        const timeoutId = setTimeout(() => resolve(null), 3500); // 3.5s timeout for snappy UX
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            clearTimeout(timeoutId);
+            resolve(pos);
+          },
+          () => {
+            clearTimeout(timeoutId);
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 3000,
+            maximumAge: 60000
+          }
+        );
+      });
+
+      if (gpsPosition && gpsPosition.coords) {
+        const { latitude, longitude } = gpsPosition.coords;
+
+        // Try reverse geocoding coordinates to get neighborhood and city (OpenStreetMap Nominatim)
+        let resolvedCity = 'São Paulo';
+        let resolvedState = 'SP';
+        let resolvedNeighborhood = 'Localização GPS Exata';
+
+        try {
+          const revRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } }
+          );
+          if (revRes.ok) {
+            const revData = await revRes.json();
+            const addr = revData.address || {};
+            resolvedCity = addr.city || addr.town || addr.municipality || 'São Paulo';
+            resolvedState = addr.state_code || addr.state || 'SP';
+            resolvedNeighborhood = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || 'Localização GPS';
+          }
+        } catch {
+          // Keep default labels if reverse geocode fails
+        }
+
+        const exactGpsLocation: VisitorLocation = {
+          city: resolvedCity,
+          state: resolvedState,
+          neighborhood: resolvedNeighborhood,
+          latitude,
+          longitude
+        };
+
+        try {
+          sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(exactGpsLocation));
+        } catch {
+          // Ignore storage error
+        }
+
+        return exactGpsLocation;
+      }
+    } catch {
+      // Continue to IP fallback
+    }
+  }
+
+  // 3. Fallback: Query backend IP-based geo detection
   try {
     const res = await fetch('/api/analytics/geo');
     const data = await res.json();
@@ -138,7 +212,7 @@ export async function getVisitorLocation(): Promise<VisitorLocation> {
   const fallback: VisitorLocation = {
     city: 'São Paulo',
     state: 'SP',
-    neighborhood: 'Água Branca / Zona Oeste',
+    neighborhood: 'Água Branca / Perdizes',
     latitude: -23.5234,
     longitude: -46.6875
   };
