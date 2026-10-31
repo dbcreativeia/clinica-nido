@@ -713,9 +713,17 @@ export const AdminCRMPage: React.FC = () => {
           <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap sm:flex-nowrap">
 
             <button
-              onClick={() => fetchLeads(true)}
+              onClick={async () => {
+                setIsLoading(true);
+                try {
+                  await fetch('/api/integrations/kommo/sync').catch(() => {});
+                  await fetchLeads(true);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
               disabled={isLoading}
-              title="Recarregar lista"
+              title="Recarregar lista e sincronizar com o Kommo"
               className="inline-flex items-center gap-1.5 bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] px-3.5 py-2.5 rounded-xl border border-[#E5DAD0] text-xs font-bold transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />

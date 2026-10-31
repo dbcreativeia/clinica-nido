@@ -1448,8 +1448,8 @@ async function startServer() {
         return res.status(400).json({ error: 'Token do Kommo não configurado.' });
       }
 
-      // Fetch leads from Kommo (with embedded contacts)
-      const kommoRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/leads?with=contacts&limit=100`, {
+      // Fetch most recently updated leads from Kommo (with embedded contacts)
+      const kommoRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/leads?order[updated_at]=desc&with=contacts&limit=50`, {
         headers: {
           'Authorization': `Bearer ${KOMMO_TOKEN}`,
           'Content-Type': 'application/json'
@@ -1463,6 +1463,48 @@ async function startServer() {
 
       const kommoData = await kommoRes.json() as any;
       const kommoLeads = kommoData?._embedded?.leads || [];
+
+      // Collect all contact IDs from recent Kommo leads to batch query their phones
+      const allContactIds: number[] = [];
+      for (const kl of kommoLeads) {
+        for (const c of kl._embedded?.contacts || []) {
+          if (c.id && !allContactIds.includes(c.id)) {
+            allContactIds.push(c.id);
+          }
+        }
+      }
+
+      // Map contactId -> phone numbers
+      const contactPhoneMap = new Map<number, string[]>();
+      if (allContactIds.length > 0) {
+        try {
+          const idsParam = allContactIds.slice(0, 40).map((id) => `id[]=${id}`).join('&');
+          const contactsRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/contacts?${idsParam}`, {
+            headers: {
+              'Authorization': `Bearer ${KOMMO_TOKEN}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (contactsRes.ok) {
+            const contactsData = await contactsRes.json() as any;
+            const fetchedContacts = contactsData?._embedded?.contacts || [];
+            for (const fc of fetchedContacts) {
+              const phones: string[] = [];
+              for (const cf of fc.custom_fields_values || []) {
+                if (cf.field_code === 'PHONE') {
+                  for (const v of cf.values || []) {
+                    const clean = String(v.value || '').replace(/\D/g, '');
+                    if (clean.length >= 8) phones.push(clean);
+                  }
+                }
+              }
+              contactPhoneMap.set(fc.id, phones);
+            }
+          }
+        } catch (fetchContactsErr) {
+          console.warn('[Kommo Contacts Batch Fetch Warning]', fetchContactsErr);
+        }
+      }
 
       // Pipelines permitidos: Funil de Vendas (13625351) e BLACK FRIDAY (14680687)
       // EXCLUÍDO TOTALMENTE: INSCRIÇAO MÉTODO ESPELHO (14692211)
@@ -1504,8 +1546,10 @@ async function startServer() {
       let adsCalibratedCount = 0;
       let siteLeadsUpdatedCount = 0;
 
+      // Keep track of which site lead was already updated by a newer Kommo lead
+      const updatedSiteLeadMap = new Map<string, number>();
+
       for (const kLead of kommoLeads) {
-        // Ignora qualquer lead pertencente ao funil de Inscrição Método Espelho
         if (EXCLUDED_PIPELINE_IDS.includes(kLead.pipeline_id)) {
           continue;
         }
@@ -1513,34 +1557,58 @@ async function startServer() {
         const kId = String(kLead.id);
         const mapped = STATUS_ID_MAP[kLead.status_id];
         const isQualified = mapped ? mapped.isQualified : false;
+        const kUpdatedAt = Number(kLead.updated_at) || 0;
 
-        // Extrai contatos do lead do Kommo para aprendizado do Meta/Google
         if (isQualified) {
           adsCalibratedCount++;
         }
 
-        // Match with existing site lead ONLY by exact kommoLeadId
-        const existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
+        // Match with existing site lead:
+        // 1. Exact kommoLeadId
+        // 2. OR matching phone number from contact
+        let existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
 
-        if (existingIdx !== -1) {
-          if (kLead.is_deleted) {
-            // Se foi apagado no Kommo, marca como excluído/perdido ou sincroniza
-            siteLeads[existingIdx].status = 'perdido';
-            siteLeads[existingIdx].notes = 'Lead excluído na conta Kommo.';
-            siteLeads[existingIdx].updatedAt = new Date().toISOString();
-            siteLeadsUpdatedCount++;
-          } else if (mapped) {
-            siteLeads[existingIdx].status = mapped.status;
-            siteLeads[existingIdx].kommoStatusId = String(kLead.status_id);
-            siteLeads[existingIdx].updatedAt = new Date().toISOString();
-            if (isQualified) {
-              siteLeads[existingIdx].metaLeadSent = true;
-              siteLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+        if (existingIdx === -1) {
+          const contactList = kLead._embedded?.contacts || [];
+          for (const c of contactList) {
+            if (existingIdx !== -1) break;
+            const phones = contactPhoneMap.get(c.id) || [];
+            for (const cleanKPhone of phones) {
+              existingIdx = siteLeads.findIndex((sl) => {
+                const cleanSlPhone = String(sl.phone || '').replace(/\D/g, '');
+                return cleanSlPhone.endsWith(cleanKPhone.slice(-8)) || cleanKPhone.endsWith(cleanSlPhone.slice(-8));
+              });
+              if (existingIdx !== -1) break;
             }
-            siteLeadsUpdatedCount++;
           }
         }
-        // Jamais tenta adivinhar por nome solto nem insere leads do Kommo no site CRM
+
+        if (existingIdx !== -1) {
+          const targetLeadId = siteLeads[existingIdx].id;
+          const prevTimestamp = updatedSiteLeadMap.get(targetLeadId) || 0;
+
+          // Only apply if this Kommo lead update is newer than any previous one processed
+          if (kUpdatedAt >= prevTimestamp) {
+            updatedSiteLeadMap.set(targetLeadId, kUpdatedAt);
+
+            if (kLead.is_deleted) {
+              siteLeads[existingIdx].status = 'perdido';
+              siteLeads[existingIdx].notes = 'Lead excluído na conta Kommo.';
+              siteLeads[existingIdx].updatedAt = new Date().toISOString();
+              siteLeadsUpdatedCount++;
+            } else if (mapped) {
+              siteLeads[existingIdx].status = mapped.status;
+              siteLeads[existingIdx].kommoLeadId = kId;
+              siteLeads[existingIdx].kommoStatusId = String(kLead.status_id);
+              siteLeads[existingIdx].updatedAt = new Date().toISOString();
+              if (isQualified) {
+                siteLeads[existingIdx].metaLeadSent = true;
+                siteLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+              }
+              siteLeadsUpdatedCount++;
+            }
+          }
+        }
       }
 
       if (siteLeadsUpdatedCount > 0) {
