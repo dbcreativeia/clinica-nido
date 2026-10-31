@@ -1563,25 +1563,8 @@ async function startServer() {
           adsCalibratedCount++;
         }
 
-        // Match with existing site lead:
-        // 1. Exact kommoLeadId
-        // 2. OR matching phone number from contact
-        let existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
-
-        if (existingIdx === -1) {
-          const contactList = kLead._embedded?.contacts || [];
-          for (const c of contactList) {
-            if (existingIdx !== -1) break;
-            const phones = contactPhoneMap.get(c.id) || [];
-            for (const cleanKPhone of phones) {
-              existingIdx = siteLeads.findIndex((sl) => {
-                const cleanSlPhone = String(sl.phone || '').replace(/\D/g, '');
-                return cleanSlPhone.endsWith(cleanKPhone.slice(-8)) || cleanKPhone.endsWith(cleanSlPhone.slice(-8));
-              });
-              if (existingIdx !== -1) break;
-            }
-          }
-        }
+        // Match with existing site lead strictly by exact kommoLeadId
+        const existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
 
         if (existingIdx !== -1) {
           const targetLeadId = siteLeads[existingIdx].id;
