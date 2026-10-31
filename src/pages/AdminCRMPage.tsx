@@ -73,6 +73,15 @@ export interface StoredLead {
       durationSeconds: number;
     }>;
   };
+  procedureCycles?: Array<{
+    cycleId: string;
+    procedureName: string;
+    date: string;
+    status: string;
+    trafficSource?: string;
+    trafficCampaign?: string;
+    notes?: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -704,9 +713,18 @@ export const AdminCRMPage: React.FC = () => {
           <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap sm:flex-nowrap">
 
             <button
-              onClick={() => fetchLeads(true)}
+              onClick={async () => {
+                setIsLoading(true);
+                try {
+                  // Sincroniza status do Kommo para leads que vieram do site
+                  await fetch('/api/integrations/kommo/sync').catch(() => {});
+                  await fetchLeads(true);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
               disabled={isLoading}
-              title="Recarregar lista"
+              title="Recarregar lista e sincronizar status com o Kommo"
               className="inline-flex items-center gap-1.5 bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] px-3.5 py-2.5 rounded-xl border border-[#E5DAD0] text-xs font-bold transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1437,6 +1455,54 @@ export const AdminCRMPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Histórico de Procedimentos & Ciclos de Compra do Paciente (LTV) */}
+            {selectedLead.procedureCycles && selectedLead.procedureCycles.length > 0 && (
+              <div className="bg-[#FAF6F0] p-4 rounded-xl border border-[#E5DAD0] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#1F1916] uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#8C7359]" />
+                    Histórico de Procedimentos & Ciclos ({selectedLead.procedureCycles.length} contato{selectedLead.procedureCycles.length > 1 ? 's' : ''})
+                  </span>
+                  {selectedLead.procedureCycles.length > 1 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1F4E79] text-white">
+                      ★ Paciente Recorrente
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  {selectedLead.procedureCycles.map((cycle, cIdx) => (
+                    <div key={cIdx} className="bg-white p-3 rounded-lg border border-[#EFE6DC] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-[#FAF6F0] text-[#44342E] font-bold text-[10px] flex items-center justify-center border border-[#E5DAD0]">
+                            #{selectedLead.procedureCycles!.length - cIdx}
+                          </span>
+                          <span className="font-bold text-[#1F1916]">{cycle.procedureName}</span>
+                          <span className="text-[10px] text-[#8C7359]">
+                            {new Date(cycle.date).toLocaleDateString('pt-BR')} às {new Date(cycle.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {cycle.notes && (
+                          <p className="text-[11px] text-[#5C4B44] mt-1 pl-7">{cycle.notes}</p>
+                        )}
+                        {cycle.trafficCampaign && (
+                          <p className="text-[10px] font-mono text-[#8C7359] pl-7">
+                            Origem: {cycle.trafficSource || 'direto'} • Campanha: {cycle.trafficCampaign}
+                          </p>
+                        )}
+                      </div>
+                      <div className="pl-7 sm:pl-0">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getStatusBadgeClass(cycle.status)}`}>
+                          {cycle.status === 'convertido' ? 'Venda Realizada' : cycle.status === 'agendado' ? 'Agendado' : cycle.status === 'compareceu' ? 'Compareceu' : 'Novo Contato'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Jornada de Navegação & Tempo de Permanência do Lead */}
             <div className="bg-[#FAF6F0] p-4 rounded-xl border border-[#E5DAD0] space-y-3">

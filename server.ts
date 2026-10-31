@@ -89,6 +89,8 @@ async function pushLeadToKommo(lead: Record<string, any>): Promise<any> {
     const leadPayload = [
       {
         name: `Lead Site - ${lead.name} (${lead.serviceInterest || 'Estética'})`,
+        pipeline_id: 13625351, // Funil de Vendas oficial da Clínica
+        status_id: 105149571, // Etapa de leads de entrada
         price: 0,
         custom_fields_values: customFieldsValues,
         _embedded: {
@@ -116,7 +118,14 @@ async function pushLeadToKommo(lead: Record<string, any>): Promise<any> {
 
     const data = await response.json() as any;
     console.log('[Kommo Sync Lead Created]', response.status, JSON.stringify(data).slice(0, 200));
-    return { success: response.ok, data };
+
+    // Extract created Kommo lead ID
+    let createdKommoId: string | undefined;
+    if (Array.isArray(data) && data[0]?.id) {
+      createdKommoId = String(data[0].id);
+    }
+
+    return { success: response.ok, kommoLeadId: createdKommoId, data };
   } catch (err: unknown) {
     console.error('[Kommo Push Lead Error]', err);
     return { success: false, error: err };
@@ -540,6 +549,15 @@ async function startServer() {
         durationSeconds: number;
       }>;
     };
+    procedureCycles?: Array<{
+      cycleId: string;
+      procedureName: string;
+      date: string;
+      status: string;
+      trafficSource?: string;
+      trafficCampaign?: string;
+      notes?: string;
+    }>;
     kommoLeadId?: string;
     kommoStatusId?: string;
     createdAt: string;
@@ -578,6 +596,7 @@ async function startServer() {
           longitude DECIMAL(10, 6),
           viewed_treatments JSON,
           session_journey JSON,
+          procedure_cycles JSON,
           status VARCHAR(50) DEFAULT 'novo',
           notes TEXT,
           meta_lead_sent BOOLEAN DEFAULT FALSE,
@@ -589,15 +608,20 @@ async function startServer() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // Add session_journey column if table was previously created without it
+      // Add columns if table was previously created without them
       try {
         await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN session_journey JSON AFTER viewed_treatments;`);
       } catch {
         // Already exists
       }
+      try {
+        await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
+      } catch {
+        // Already exists
+      }
 
       isDbReady = true;
-      console.log('[MySQL Table Verified] Tabela nido_leads pronta com session_journey.');
+      console.log('[MySQL Table Verified] Tabela nido_leads pronta com procedure_cycles.');
     } catch (err) {
       console.error('[MySQL Init Table Error]', err);
     }
@@ -636,6 +660,7 @@ async function startServer() {
           longitude: r.longitude ? Number(r.longitude) : undefined,
           viewedTreatments: typeof r.viewed_treatments === 'string' ? JSON.parse(r.viewed_treatments || '[]') : (r.viewed_treatments || []),
           sessionJourney: typeof r.session_journey === 'string' ? JSON.parse(r.session_journey || 'null') : (r.session_journey || undefined),
+          procedureCycles: typeof r.procedure_cycles === 'string' ? JSON.parse(r.procedure_cycles || '[]') : (r.procedure_cycles || []),
           status: r.status || 'novo',
           notes: r.notes || '',
           metaLeadSent: Boolean(r.meta_lead_sent),
@@ -670,11 +695,12 @@ async function startServer() {
               traffic_channel, traffic_source, traffic_medium, traffic_campaign,
               traffic_term, traffic_content, fbclid, gclid, referrer, page_path,
               client_ip, city, state, neighborhood, latitude, longitude,
-              viewed_treatments, session_journey, status, notes, meta_lead_sent, meta_lead_sent_at,
+              viewed_treatments, session_journey, procedure_cycles, status, notes, meta_lead_sent, meta_lead_sent_at,
               kommo_lead_id, kommo_status_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
               session_journey = VALUES(session_journey),
+              procedure_cycles = VALUES(procedure_cycles),
               status = VALUES(status),
               notes = VALUES(notes),
               meta_lead_sent = VALUES(meta_lead_sent),
@@ -708,6 +734,7 @@ async function startServer() {
             l.longitude || null,
             JSON.stringify(l.viewedTreatments || []),
             l.sessionJourney ? JSON.stringify(l.sessionJourney) : null,
+            JSON.stringify(l.procedureCycles || []),
             l.status || 'novo',
             l.notes || '',
             l.metaLeadSent ? 1 : 0,
@@ -818,48 +845,127 @@ async function startServer() {
       const leadLat = hasExactCoords ? latitude : randomGeo.latitude;
       const leadLng = hasExactCoords ? longitude : randomGeo.longitude;
 
-      const newLead: StoredLead = {
-        id: `lead_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        name: String(name).trim(),
-        phone: String(phone).trim(),
-        email: String(email).trim().toLowerCase(),
-        serviceInterest,
-        ctaLocation,
-        message,
-        trafficChannel,
-        trafficSource,
-        trafficMedium,
-        trafficCampaign,
-        trafficTerm,
-        trafficContent,
-        fbclid,
-        gclid,
-        referrer,
-        pagePath,
-        clientIp,
-        city: leadCity,
-        state: leadState,
-        neighborhood: leadNeighborhood,
-        latitude: leadLat,
-        longitude: leadLng,
-        viewedTreatments,
-        sessionJourney,
-        status: 'novo',
-        notes: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
+      const cleanDigitsPhone = String(phone).replace(/\D/g, '');
       const leads = await readLeads();
-      leads.unshift(newLead);
+
+      // Check if this patient already exists by phone digits (or exact email)
+      const existingPatientIdx = leads.findIndex((l) => {
+        const existingDigits = (l.phone || '').replace(/\D/g, '');
+        if (cleanDigitsPhone && existingDigits && (existingDigits === cleanDigitsPhone || existingDigits.endsWith(cleanDigitsPhone.slice(-8)))) {
+          return true;
+        }
+        if (email && l.email && l.email.toLowerCase() === email.toLowerCase()) {
+          return true;
+        }
+        return false;
+      });
+
+      let leadToSave: StoredLead;
+
+      if (existingPatientIdx !== -1) {
+        // Recurrent Patient: Append new procedure cycle to existing record
+        const existing = leads[existingPatientIdx];
+        const newCycle = {
+          cycleId: `cycle_${Date.now()}`,
+          procedureName: serviceInterest,
+          date: new Date().toISOString(),
+          status: 'novo',
+          trafficSource,
+          trafficCampaign,
+          notes: `Novo contato via ${ctaLocation}: "${message || 'Interesse em ' + serviceInterest}"`
+        };
+
+        const existingCycles = Array.isArray(existing.procedureCycles) ? existing.procedureCycles : [];
+        // If this is the second contact, preserve cycle 1
+        if (existingCycles.length === 0) {
+          existingCycles.push({
+            cycleId: `cycle_initial_${existing.id}`,
+            procedureName: existing.serviceInterest || 'Primeiro Procedimento',
+            date: existing.createdAt,
+            status: existing.status || 'convertido',
+            trafficSource: existing.trafficSource,
+            trafficCampaign: existing.trafficCampaign,
+            notes: 'Primeiro contato registrado no site'
+          });
+        }
+        existingCycles.unshift(newCycle);
+
+        existing.serviceInterest = `${serviceInterest} (Recorrente: ${existingCycles.length}º ciclo)`;
+        existing.procedureCycles = existingCycles;
+        existing.status = 'novo'; // Re-open for negotiation of new procedure
+        existing.updatedAt = new Date().toISOString();
+        if (sessionJourney) existing.sessionJourney = sessionJourney;
+        if (viewedTreatments && viewedTreatments.length > 0) {
+          existing.viewedTreatments = Array.from(new Set([...(existing.viewedTreatments || []), ...viewedTreatments]));
+        }
+
+        leadToSave = existing;
+        leads[existingPatientIdx] = existing;
+      } else {
+        // Brand new patient: Initialize with Cycle 1
+        leadToSave = {
+          id: `lead_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          name: String(name).trim(),
+          phone: String(phone).trim(),
+          email: String(email).trim().toLowerCase(),
+          serviceInterest,
+          ctaLocation,
+          message,
+          trafficChannel,
+          trafficSource,
+          trafficMedium,
+          trafficCampaign,
+          trafficTerm,
+          trafficContent,
+          fbclid,
+          gclid,
+          referrer,
+          pagePath,
+          clientIp,
+          city: leadCity,
+          state: leadState,
+          neighborhood: leadNeighborhood,
+          latitude: leadLat,
+          longitude: leadLng,
+          viewedTreatments,
+          sessionJourney,
+          procedureCycles: [
+            {
+              cycleId: `cycle_1_${Date.now()}`,
+              procedureName: serviceInterest,
+              date: new Date().toISOString(),
+              status: 'novo',
+              trafficSource,
+              trafficCampaign,
+              notes: 'Primeiro contato registrado'
+            }
+          ],
+          status: 'novo',
+          notes: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        leads.unshift(leadToSave);
+      }
+
       await writeLeads(leads);
 
-      // Asynchronously push lead with all UTMs to Kommo CRM API
-      pushLeadToKommo(newLead).catch((err) => {
+      // Push lead to Kommo CRM API
+      pushLeadToKommo(leadToSave).then(async (kommoResult) => {
+        if (kommoResult && kommoResult.kommoLeadId) {
+          const freshLeads = await readLeads();
+          const target = freshLeads.find((l) => l.id === leadToSave.id);
+          if (target) {
+            target.kommoLeadId = kommoResult.kommoLeadId;
+            target.kommoStatusId = '105149571';
+            await writeLeads(freshLeads);
+          }
+        }
+      }).catch((err) => {
         console.warn('[Async Kommo Lead Sync Warning]', err);
       });
 
-      return res.status(201).json({ success: true, lead: newLead });
+      return res.status(201).json({ success: true, lead: leadToSave, isRecurrent: existingPatientIdx !== -1 });
     } catch (err: unknown) {
       console.error('[Create Lead Error]', err);
       return res.status(500).json({ error: 'Erro ao salvar lead' });
@@ -1381,7 +1487,13 @@ async function startServer() {
         113434031: { status: 'em_contato', label: 'Negociação', isQualified: false },
         // Global Win / Loss
         142: { status: 'convertido', label: 'Fechado - ganho / Venda ganha', isQualified: true },
-        143: { status: 'perdido', label: 'Fechado - perdido', isQualified: false }
+        143: { status: 'perdido', label: 'Fechado - perdido', isQualified: false },
+        // Legacy / Additional pipeline statuses
+        113223647: { status: 'novo', label: 'Leads de entrada', isQualified: false },
+        113223651: { status: 'novo', label: 'Nome / Entrada', isQualified: false },
+        113223655: { status: 'em_contato', label: 'Contato', isQualified: false },
+        113223659: { status: 'agendado', label: 'Agendado', isQualified: true },
+        113223663: { status: 'convertido', label: 'Ganho', isQualified: true }
       };
 
       const siteLeads = await readLeads();
@@ -1389,7 +1501,7 @@ async function startServer() {
       let siteLeadsUpdatedCount = 0;
 
       for (const kLead of kommoLeads) {
-        // Ignora qualquer lead pertencente ao Método Espelho
+        // Ignora qualquer lead pertencente ao funil de Inscrição Método Espelho
         if (EXCLUDED_PIPELINE_IDS.includes(kLead.pipeline_id)) {
           continue;
         }
@@ -1403,8 +1515,15 @@ async function startServer() {
           adsCalibratedCount++;
         }
 
-        // Se o lead já existir na base do site (origem do site), apenas atualiza o status dele
-        const existingIdx = siteLeads.findIndex((l) => l.kommoLeadId === kId || (l.name && l.name === kLead.name));
+        // Match with existing site lead by kommoLeadId OR name substring
+        const cleanKLeadName = String(kLead.name || '').toLowerCase();
+        const existingIdx = siteLeads.findIndex((l) => {
+          if (l.kommoLeadId && l.kommoLeadId === kId) return true;
+          const cleanSiteName = String(l.name || '').toLowerCase();
+          if (cleanSiteName && (cleanKLeadName.includes(cleanSiteName) || cleanSiteName.includes(cleanKLeadName))) return true;
+          return false;
+        });
+
         if (existingIdx !== -1 && mapped) {
           siteLeads[existingIdx].status = mapped.status;
           siteLeads[existingIdx].kommoLeadId = kId;
