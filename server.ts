@@ -1610,22 +1610,19 @@ async function startServer() {
         }
       }
 
-      if (siteLeadsUpdatedCount > 0) {
-        // Salva os leads restantes e também remove do banco MySQL os que sumiram
-        await writeLeads(siteLeads);
-        if (isDbReady && dbPool) {
-          try {
-            const currentIds = siteLeads.map((l) => l.id);
-            if (currentIds.length > 0) {
-              // Deleta da base MySQL tudo o que não está mais no array
-              const placeholders = currentIds.map(() => '?').join(',');
-              await dbPool.query(`DELETE FROM nido_leads WHERE id NOT IN (${placeholders})`, currentIds);
-            } else {
-              await dbPool.query('DELETE FROM nido_leads');
-            }
-          } catch (dbDelErr) {
-            console.error('[MySQL Purge Deleted Leads Error]', dbDelErr);
+      // Salva os leads e garante sincronia com o banco MySQL
+      await writeLeads(siteLeads);
+      if (isDbReady && dbPool) {
+        try {
+          const currentIds = siteLeads.map((l) => l.id);
+          if (currentIds.length > 0) {
+            const placeholders = currentIds.map(() => '?').join(',');
+            await dbPool.query(`DELETE FROM nido_leads WHERE id NOT IN (${placeholders})`, currentIds);
+          } else {
+            await dbPool.query('DELETE FROM nido_leads');
           }
+        } catch (dbDelErr) {
+          console.error('[MySQL Purge Deleted Leads Error]', dbDelErr);
         }
       }
 
