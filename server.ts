@@ -18,7 +18,23 @@ const PRODUCTION_DOMAINS = ['nidoestetica.com.br', 'www.nidoestetica.com.br'];
 
 // Kommo CRM Configuration
 const KOMMO_SUBDOMAIN = process.env.KOMMO_SUBDOMAIN || 'brendaniyama';
-const KOMMO_TOKEN = process.env.KOMMO_LONG_LIVED_TOKEN || process.env.KOMMO_TOKEN || '';
+const KOMMO_TOKEN = process.env.KOMMO_LONG_LIVED_TOKEN || process.env.KOMMO_TOKEN || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImFhM2Y5MDVhZmVmZDY0YjE4YTVkMzBhMWQ1NzM1ZmNiZWExZDc1ZDkwZTA3MDU0OTY5ODc5ZjczYzg0MWFhOTA4YmFiY2QyMDNiY2ZmMWExIn0.eyJhdWQiOiI0ZjZlNjQyNC1iNzEyLTRiNmQtOGQ4YS0zYjRmZGRiMjQ2Y2IiLCJqdGkiOiJhYTNmOTA1YWZlZmQ2NGIxOGE1ZDMwYTFkNTczNWZjYmVhMWQ3NWQ5MGUwNzA1NDk2OTg3OWY3M2M4NDFhYTkwOGJhYmNkMjAzYmNmZjFhMSIsImlhdCI6MTc5MzQ2MjA4MywibmJmIjoxNzkzNDYyMDgzLCJleHAiOjE5NTExNzEyMDAsInN1YiI6IjE1MTc2MzExIiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjM2Mzk2MTM5LCJiYXNlX2RvbWFpbiI6ImtvbW1vLmNvbSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJjcm0iLCJmaWxlcyIsImZpbGVzX2RlbGV0ZSIsImxpc3RfZXh0ZXJuYWxfbWVzc2FnZXMiLCJub3RpZmljYXRpb25zIiwicHVzaF9ub3RpZmljYXRpb25zIiwic2VuZF9leHRlcm5hbF9tZXNzYWdlcyIsInVzZXJzX2FjdGl2YXRlIiwidXNlcnNfYWRkIiwidXNlcnNfZGVhY3RpdmF0ZSJdLCJoYXNoX3V1aWQiOiI2NWRiYzYxZS00NDJmLTRlYTMtYjg0Yi1jY2E3YWEwMjhkMTAiLCJhcGlfZG9tYWluIjoiYXBpLWMua29tbW8uY29tIn0.HWruhubgJ30j6PXtbmc9PtzRGgH5pF9tKIA-pizI2Ni8oYDUlT-fQ5v7imdBQ9NiSNc21qj5Nllb2v4no_qLYtRJDyX3a9keFAsJj9GeIqieEFNDZNAGV7uPeWK3RLUt9BeajfAg8aI8khnwF5_nDMfxQMeBDLCgN4Y62zHPzCLnOdzwnFGnfTZANYgYqQe2L4O8r2HiqeKlyJveNz3V_3dnky6leOs-H5ZyA93PLpJnXsFuMMiDHzwUz_sX4PRPMJPpxFyX8xxGxT3bmUh0Tbxx4uPXa0yjOlr7fRqEHYEsKH505Ux4zl760VKQBDXDIKDd7ZLZFRj871OxplwpKw';
+
+/**
+ * Exact Custom Field IDs mapped directly from account 36396139
+ */
+const KOMMO_FIELD_IDS = {
+  utm_content: 463230,
+  utm_medium: 463232,
+  utm_campaign: 463234,
+  utm_source: 463236,
+  utm_term: 463238,
+  utm_referrer: 463240,
+  referrer: 463242,
+  gclientid: 463244,
+  gclid: 463246,
+  fbclid: 463248
+};
 
 /**
  * Sends lead directly to Kommo CRM API with all custom UTM fields populated
@@ -32,20 +48,20 @@ async function pushLeadToKommo(lead: Record<string, any>): Promise<any> {
   try {
     const kommoBaseUrl = `https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4`;
 
-    // Construct custom fields array matching the exact Kommo custom field names in the account
-    const customFieldsValues: Array<{ field_name: string; values: Array<{ value: string }> }> = [];
+    // Construct custom fields array using exact Kommo custom field IDs
+    const customFieldsValues: Array<{ field_id: number; values: Array<{ value: string }> }> = [];
 
-    if (lead.trafficSource) customFieldsValues.push({ field_name: 'utm_source', values: [{ value: String(lead.trafficSource) }] });
-    if (lead.trafficMedium) customFieldsValues.push({ field_name: 'utm_medium', values: [{ value: String(lead.trafficMedium) }] });
-    if (lead.trafficCampaign) customFieldsValues.push({ field_name: 'utm_campaign', values: [{ value: String(lead.trafficCampaign) }] });
-    if (lead.trafficContent) customFieldsValues.push({ field_name: 'utm_content', values: [{ value: String(lead.trafficContent) }] });
-    if (lead.trafficTerm) customFieldsValues.push({ field_name: 'utm_term', values: [{ value: String(lead.trafficTerm) }] });
+    if (lead.trafficSource) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.utm_source, values: [{ value: String(lead.trafficSource) }] });
+    if (lead.trafficMedium) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.utm_medium, values: [{ value: String(lead.trafficMedium) }] });
+    if (lead.trafficCampaign) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.utm_campaign, values: [{ value: String(lead.trafficCampaign) }] });
+    if (lead.trafficContent) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.utm_content, values: [{ value: String(lead.trafficContent) }] });
+    if (lead.trafficTerm) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.utm_term, values: [{ value: String(lead.trafficTerm) }] });
     if (lead.referrer) {
-      customFieldsValues.push({ field_name: 'referrer', values: [{ value: String(lead.referrer) }] });
-      customFieldsValues.push({ field_name: 'utm_referrer', values: [{ value: String(lead.referrer) }] });
+      customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.referrer, values: [{ value: String(lead.referrer) }] });
+      customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.utm_referrer, values: [{ value: String(lead.referrer) }] });
     }
-    if (lead.fbclid) customFieldsValues.push({ field_name: 'fbclid', values: [{ value: String(lead.fbclid) }] });
-    if (lead.gclid) customFieldsValues.push({ field_name: 'gclid', values: [{ value: String(lead.gclid) }] });
+    if (lead.fbclid) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.fbclid, values: [{ value: String(lead.fbclid) }] });
+    if (lead.gclid) customFieldsValues.push({ field_id: KOMMO_FIELD_IDS.gclid, values: [{ value: String(lead.gclid) }] });
 
     const leadPayload = [
       {
@@ -1137,6 +1153,123 @@ async function startServer() {
       console.error('[Kommo Webhook Error]', err);
       // Always return 200 to Kommo so it does not disable the webhook retry mechanism
       return res.status(200).json({ success: false, error: 'Erro interno ao processar webhook' });
+    }
+  });
+
+  // Pull active leads directly from Kommo API on-demand
+  app.get('/api/integrations/kommo/sync', async (_req: Request, res: Response) => {
+    try {
+      if (!KOMMO_TOKEN) {
+        return res.status(400).json({ error: 'Token do Kommo não configurado.' });
+      }
+
+      // Fetch leads from Kommo (with embedded contacts)
+      const kommoRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/leads?with=contacts&limit=50`, {
+        headers: {
+          'Authorization': `Bearer ${KOMMO_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!kommoRes.ok) {
+        const errorText = await kommoRes.text();
+        return res.status(kommoRes.status).json({ error: `Kommo API error: ${errorText}` });
+      }
+
+      const kommoData = await kommoRes.json() as any;
+      const kommoLeads = kommoData?._embedded?.leads || [];
+
+      // Status mapping dictionary based on exact pipeline status IDs
+      const STATUS_ID_MAP: Record<number, { status: string; label: string }> = {
+        // Funil de Vendas (13625351)
+        105149571: { status: 'novo', label: 'Etapa de leads de entrada' },
+        105149575: { status: 'em_contato', label: 'Qualificação' },
+        105149579: { status: 'em_contato', label: 'Organizar Funil' },
+        105149583: { status: 'em_contato', label: 'Em negociação' },
+        105149587: { status: 'agendado', label: 'Agendamento' },
+        105480591: { status: 'compareceu', label: 'Compareceu' },
+        105480595: { status: 'convertido', label: 'Venda Realizada' },
+        105480599: { status: 'em_contato', label: 'Follow Up 24hrs' },
+        105480603: { status: 'em_contato', label: 'Follow Up 48hrs' },
+        105480607: { status: 'em_contato', label: 'Follow Up 72hrs' },
+        105480611: { status: 'em_contato', label: 'Follow Up 7D' },
+        105480615: { status: 'em_contato', label: 'Follow Up 14D' },
+        105480619: { status: 'em_contato', label: 'Follow Up 30D' },
+        // BLACK FRIDAY (14680687)
+        113434019: { status: 'novo', label: 'Etapa de leads de entrada' },
+        113434023: { status: 'novo', label: 'Contato inicial' },
+        113434027: { status: 'em_contato', label: 'Oferta feita' },
+        113434031: { status: 'em_contato', label: 'Negociação' },
+        // Global Win / Loss
+        142: { status: 'convertido', label: 'Fechado - ganho / Venda ganha' },
+        143: { status: 'perdido', label: 'Fechado - perdido' }
+      };
+
+      const currentLeads = await readLeads();
+      let imported = 0;
+      let updated = 0;
+
+      for (const kLead of kommoLeads) {
+        const kId = String(kLead.id);
+        const mapped = STATUS_ID_MAP[kLead.status_id] || { status: 'novo', label: 'Novo' };
+        const isQualified = mapped.status === 'agendado' || mapped.status === 'compareceu' || mapped.status === 'convertido';
+
+        // Check if exists
+        const existingIdx = currentLeads.findIndex((l) => l.kommoLeadId === kId || l.name === kLead.name);
+
+        if (existingIdx !== -1) {
+          currentLeads[existingIdx].status = mapped.status;
+          currentLeads[existingIdx].kommoLeadId = kId;
+          currentLeads[existingIdx].kommoStatusId = String(kLead.status_id);
+          currentLeads[existingIdx].updatedAt = new Date().toISOString();
+          if (isQualified) {
+            currentLeads[existingIdx].metaLeadSent = true;
+            currentLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+          }
+          updated++;
+        } else {
+          const newStored: StoredLead = {
+            id: `kommo_${kId}`,
+            name: kLead.name || `Lead Kommo #${kId}`,
+            phone: '(Kommo)',
+            email: `lead_${kId}@nido.local`,
+            serviceInterest: 'Avaliação Estética Individualizada',
+            ctaLocation: 'Kommo Funil',
+            message: `Lead sincronizado via API do Kommo. Etapa: ${mapped.label}.`,
+            trafficChannel: 'Kommo CRM',
+            trafficSource: 'kommo_api',
+            trafficMedium: 'crm_sync',
+            trafficCampaign: 'kommo_sync',
+            pagePath: '/kommo',
+            city: 'São Paulo',
+            state: 'SP',
+            neighborhood: 'Água Branca',
+            status: mapped.status,
+            notes: `Etapa Kommo: ${mapped.label}`,
+            kommoLeadId: kId,
+            kommoStatusId: String(kLead.status_id),
+            metaLeadSent: isQualified,
+            metaLeadSentAt: isQualified ? new Date().toISOString() : undefined,
+            createdAt: kLead.created_at ? new Date(kLead.created_at * 1000).toISOString() : new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          currentLeads.unshift(newStored);
+          imported++;
+        }
+      }
+
+      await writeLeads(currentLeads);
+
+      return res.json({
+        success: true,
+        message: `Sincronização concluída: ${imported} lead(s) importados, ${updated} atualizados.`,
+        imported,
+        updated,
+        totalInKommo: kommoLeads.length
+      });
+    } catch (err: unknown) {
+      console.error('[Kommo Direct Pull Error]', err);
+      return res.status(500).json({ error: 'Erro ao sincronizar diretamente com a API do Kommo.' });
     }
   });
 

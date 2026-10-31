@@ -701,11 +701,40 @@ export const AdminCRMPage: React.FC = () => {
             </button>
 
             <button
+              onClick={async () => {
+                setIsLoading(true);
+                try {
+                  const res = await fetch('/api/integrations/kommo/sync');
+                  const data = await res.json();
+                  if (data.success) {
+                    setActionFeedback(data.message);
+                    setTimeout(() => setActionFeedback(null), 4000);
+                    await fetchLeads();
+                  } else {
+                    setActionFeedback(data.error || 'Erro ao sincronizar.');
+                    setTimeout(() => setActionFeedback(null), 3000);
+                  }
+                } catch {
+                  setActionFeedback('Erro de conexão ao sincronizar.');
+                  setTimeout(() => setActionFeedback(null), 3000);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading}
+              title="Puxar leads e status atualizados diretamente da sua conta Kommo"
+              className="inline-flex items-center gap-1.5 bg-[#1F4E79] hover:bg-[#163857] text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Sincronizar Kommo</span>
+            </button>
+
+            <button
               onClick={() => setShowImportModal(true)}
               className="inline-flex items-center gap-1.5 bg-[#8C7359] hover:bg-[#735D46] text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>Importar do Kommo</span>
+              <span>Importar CSV</span>
             </button>
 
             <button
