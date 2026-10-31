@@ -1515,27 +1515,28 @@ async function startServer() {
           adsCalibratedCount++;
         }
 
-        // Match with existing site lead by kommoLeadId OR name substring
-        const cleanKLeadName = String(kLead.name || '').toLowerCase();
-        const existingIdx = siteLeads.findIndex((l) => {
-          if (l.kommoLeadId && l.kommoLeadId === kId) return true;
-          const cleanSiteName = String(l.name || '').toLowerCase();
-          if (cleanSiteName && (cleanKLeadName.includes(cleanSiteName) || cleanSiteName.includes(cleanKLeadName))) return true;
-          return false;
-        });
+        // Match with existing site lead ONLY by exact kommoLeadId
+        const existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
 
-        if (existingIdx !== -1 && mapped) {
-          siteLeads[existingIdx].status = mapped.status;
-          siteLeads[existingIdx].kommoLeadId = kId;
-          siteLeads[existingIdx].kommoStatusId = String(kLead.status_id);
-          siteLeads[existingIdx].updatedAt = new Date().toISOString();
-          if (isQualified) {
-            siteLeads[existingIdx].metaLeadSent = true;
-            siteLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+        if (existingIdx !== -1) {
+          if (kLead.is_deleted) {
+            // Se foi apagado no Kommo, marca como excluído/perdido ou sincroniza
+            siteLeads[existingIdx].status = 'perdido';
+            siteLeads[existingIdx].notes = 'Lead excluído na conta Kommo.';
+            siteLeads[existingIdx].updatedAt = new Date().toISOString();
+            siteLeadsUpdatedCount++;
+          } else if (mapped) {
+            siteLeads[existingIdx].status = mapped.status;
+            siteLeads[existingIdx].kommoStatusId = String(kLead.status_id);
+            siteLeads[existingIdx].updatedAt = new Date().toISOString();
+            if (isQualified) {
+              siteLeads[existingIdx].metaLeadSent = true;
+              siteLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
+            }
+            siteLeadsUpdatedCount++;
           }
-          siteLeadsUpdatedCount++;
         }
-        // NÃO insere novos leads do Kommo no site CRM para não misturar nem sujar a base do site
+        // Jamais tenta adivinhar por nome solto nem insere leads do Kommo no site CRM
       }
 
       if (siteLeadsUpdatedCount > 0) {
