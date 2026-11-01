@@ -1565,7 +1565,7 @@ async function startServer() {
 
         // Match with existing site lead:
         // 1. Exact kommoLeadId match
-        // 2. OR matching phone number or email from contact
+        // 2. OR if lead has no kommoLeadId yet, match by clean phone number or email
         let existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
 
         if (existingIdx === -1) {
@@ -1575,6 +1575,8 @@ async function startServer() {
             const phones = contactPhoneMap.get(c.id) || [];
             for (const cleanKPhone of phones) {
               existingIdx = siteLeads.findIndex((sl) => {
+                // Apenas vincula se o lead do site ainda NÃO tem kommoLeadId ou se for o mesmo
+                if (sl.kommoLeadId && sl.kommoLeadId !== kId) return false;
                 const cleanSlPhone = String(sl.phone || '').replace(/\D/g, '');
                 return cleanSlPhone.length >= 8 && cleanKPhone.length >= 8 && (cleanSlPhone.endsWith(cleanKPhone.slice(-8)) || cleanKPhone.endsWith(cleanSlPhone.slice(-8)));
               });
