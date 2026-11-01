@@ -6,8 +6,10 @@ import {
   WhatsAppContext 
 } from '../utils/whatsapp';
 import { getStoredTrafficAttribution, initTrafficAttribution } from '../utils/trafficSource';
-import { trackMetaEvent } from '../utils/metaConversions';
+import { trackMetaEvent, captureMetaContext } from '../utils/metaConversions';
 import { getVisitorLocation, getSessionViewedTreatments, getSessionJourney, getVisitorId, getSessionId, hasAnalyticsConsent } from '../utils/internalAnalytics';
+
+import { persistContactLead } from '../utils/leadSubmission';
 
 interface ModalDetail {
   message: string;
@@ -132,6 +134,7 @@ export const LeadCaptureModal: React.FC = () => {
 
       // Save lead locally as immediate fallback
       const leadData = {
+        metaContext: captureMetaContext(),
         attribution: {...traffic, visitorId: hasAnalyticsConsent() ? getVisitorId() : '', sessionId: hasAnalyticsConsent() ? getSessionId() : ''},
         ...visitorGeo,
         name: cleanName,
@@ -167,16 +170,8 @@ export const LeadCaptureModal: React.FC = () => {
         // LocalStorage fallback
       }
 
-      // Send to backend CRM API
-      try {
-        await fetch('/api/leads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(leadData)
-        });
-      } catch (err) {
-        console.warn('[CRM Lead Dispatch Warning]', err);
-      }
+      // Do not create a Meta conversion unless MySQL confirmed this contact.
+      await persistContactLead(leadData);
 
       // Meta Conversions API & Pixel Contact event with rich matching data
       try {
@@ -195,7 +190,6 @@ export const LeadCaptureModal: React.FC = () => {
             ...(lastName ? { ln: lastName } : {}),
             ph: cleanPhoneDigits,
             em: cleanEmail.toLowerCase(),
-            country: 'br'
           }
         });
       } catch (metaErr) {
@@ -212,11 +206,7 @@ export const LeadCaptureModal: React.FC = () => {
       setIsOpen(false);
     } catch (err) {
       console.error('Error submitting lead:', err);
-      setError('Ocorreu um erro ao processar. Você será redirecionado para o WhatsApp.');
-      // Fallback: still open WhatsApp
-      const fallbackMsg = formatPersonalizedWhatsAppMessage(cleanName, rawMessage);
-      openDirectWhatsApp(fallbackMsg, context);
-      setIsOpen(false);
+      setError('Não foi possível confirmar seu cadastro. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }

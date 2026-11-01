@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: '24'
       - run: npm install --ignore-scripts
-      - run: node --test crm-sync.test.mjs meta-capi.test.mjs meta-conversions.test.ts meta-safety.test.ts analytics-engine.test.mjs attribution-location.test.mjs
+      - run: node --test crm-sync.test.mjs meta-capi.test.mjs meta-conversions.test.ts meta-safety.test.ts analytics-engine.test.mjs attribution-location.test.mjs find-location-click.test.mjs crm-meta.test.mjs lead-submission.test.ts traffic-funnel.test.ts browser-form-flow.test.mjs
       - run: node --check server.ts
       - run: npm run lint
       - run: npm run build

@@ -27,7 +27,6 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { SEOHead } from '../components/SEOHead';
-import { trackMetaEvent } from '../utils/metaConversions';
 import { InternalAnalyticsDashboard } from '../components/admin/InternalAnalyticsDashboard';
 import { LeadsGeoMap } from '../components/admin/LeadsGeoMap';
 
@@ -198,66 +197,9 @@ export const AdminCRMPage: React.FC = () => {
   };
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
-    const targetLead = leads.find((l) => l.id === leadId);
-    const isQualifyingLead = newStatus === 'agendado' || newStatus === 'compareceu' || newStatus === 'convertido';
-    let metaEventId = '';
-
-    // Disparar evento para o Meta de LEAD quando for marcado como Avaliação Agendada, Compareceu ou Convertido
-    if (targetLead && isQualifyingLead) {
-      const statusLabel = 
-        newStatus === 'agendado' ? 'Avaliação Agendada' : 
-        newStatus === 'compareceu' ? 'Compareceu à Avaliação' : 'Convertido';
-      try {
-        const nameParts = (targetLead.name || '').trim().split(/\s+/);
-        const firstName = nameParts[0] || targetLead.name;
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
-
-        metaEventId = await trackMetaEvent('Lead', {
-          userData: {
-            em: targetLead.email,
-            ph: targetLead.phone,
-            fn: firstName,
-            ...(lastName ? { ln: lastName } : {}),
-            ct: targetLead.city || 'sao paulo',
-            st: targetLead.state || 'sp',
-            country: 'br'
-          },
-          customData: {
-            content_name: targetLead.serviceInterest || 'Avaliação Estética',
-            content_category: 'Lead Qualificado CRM',
-            lead_status: newStatus,
-            lead_status_label: statusLabel,
-            traffic_channel: targetLead.trafficChannel || 'Direto',
-            currency: 'BRL',
-            value: newStatus === 'convertido' ? 500 : 0
-          }
-        });
-
-        setMetaNotification({
-          show: true,
-          leadName: targetLead.name,
-          statusLabel,
-          eventId: metaEventId
-        });
-
-        setTimeout(() => {
-          setMetaNotification(null);
-        }, 7000);
-      } catch (err) {
-        console.error('[Meta Lead Trigger Error]', err);
-      }
-    }
-
+    // The server owns qualification, deduplication and delivery acknowledgment.
     try {
-      const updatePayload: { status: string; metaLeadSent?: boolean; metaLeadSentAt?: string } = {
-        status: newStatus
-      };
-
-      if (isQualifyingLead) {
-        updatePayload.metaLeadSent = true;
-        updatePayload.metaLeadSentAt = new Date().toISOString();
-      }
-
+      const updatePayload = {status:newStatus};
       const res = await fetch(`/api/leads/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1315,7 +1257,7 @@ export const AdminCRMPage: React.FC = () => {
             </div>
 
             {/* Meta Ads CAPI Status Card */}
-            {(selectedLead.metaLeadSent || selectedLead.status === 'agendado' || selectedLead.status === 'compareceu' || selectedLead.status === 'convertido') ? (
+            {selectedLead.metaLeadSent ? (
               <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex items-start gap-3">
                 <ShieldCheck className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
                 <div className="text-xs">

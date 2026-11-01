@@ -1,0 +1,4 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {initTrafficAttribution} from './src/utils/trafficSource.ts';
+for(const [query,expected] of [['utm_source=meta-ads&utm_medium=instagram&utm_term=frio','Meta Ads'],['utm_source=ig&utm_medium=paid_social&campaign_id=123&adset_id=456&ad_id=789&adset_name=frio&ad_name=video','Meta Ads']])test('ad attribution '+query,()=>{const map=new Map();globalThis.localStorage={getItem:(k:string)=>map.get(k)||null,setItem:(k:string,v:string)=>map.set(k,v)} as any;globalThis.document={referrer:'',cookie:''} as any;globalThis.window={location:{search:'?'+query,pathname:'/',hostname:'nidoestetica.com.br'}} as any;const a=initTrafficAttribution();assert.equal(a.channel,expected);assert.equal(a.adSet,'frio');if(query.includes('ad_id')){assert.equal(a.campaignId,'123');assert.equal(a.adSetId,'456');assert.equal(a.adId,'789');}});

@@ -16,7 +16,9 @@ import { Link } from 'react-router-dom';
 import { TREATMENTS } from '../data/treatments';
 import { SEOHead } from '../components/SEOHead';
 import { getStoredTrafficAttribution, initTrafficAttribution } from '../utils/trafficSource';
-import { trackMetaEvent } from '../utils/metaConversions';
+import { trackMetaEvent, captureMetaContext } from '../utils/metaConversions';
+
+import { persistContactLead } from '../utils/leadSubmission';
 
 export const ContactPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -27,6 +29,7 @@ export const ContactPage: React.FC = () => {
     privacyAccepted: false
   });
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting,setIsSubmitting]=useState(false);
   const [formError, setFormError] = useState('');
 
   // Coordenadas e endereço da clínica
@@ -45,6 +48,7 @@ export const ContactPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(isSubmitting)return;
     if (!formData.privacyAccepted) {
       setFormError('Por favor, aceite a Política de Privacidade para prosseguir.');
       return;
@@ -58,12 +62,12 @@ export const ContactPage: React.FC = () => {
     const message = `Oi meu nome é ${cleanName}, vim pelo site da Nidô e gostaria de informações sobre ${formData.serviceInterest}. Você pode me orientar?`;
     const traffic = getStoredTrafficAttribution() || initTrafficAttribution();
 
+    setIsSubmitting(true);
     // Save lead to CRM
     try {
-      await fetch('/api/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await persistContactLead({
+          metaContext: captureMetaContext(),
+          attribution: traffic,
           name: cleanName,
           phone: formData.phone,
           email: cleanEmail,
@@ -80,10 +84,11 @@ export const ContactPage: React.FC = () => {
           gclid: traffic.gclid || '',
           referrer: traffic.referrer || document.referrer || '',
           pagePath: '/contato'
-        })
       });
     } catch (err) {
-      console.warn('[CRM Lead Dispatch Warning]', err);
+      setIsSubmitting(false);
+      setFormError('Não foi possível confirmar seu cadastro. Tente novamente.');
+      return;
     }
 
     // Meta tracking
@@ -104,9 +109,6 @@ export const ContactPage: React.FC = () => {
           ...(lastName ? { ln: lastName } : {}),
           ph: cleanPhoneDigits,
           em: cleanEmail.toLowerCase(),
-          country: 'br',
-          st: 'sp',
-          ct: 'sao paulo'
         }
       });
     } catch {
@@ -120,6 +122,7 @@ export const ContactPage: React.FC = () => {
       skipMetaContact: true
     });
     setSubmitted(true);
+    setIsSubmitting(false);
   };
 
   return (
@@ -438,6 +441,7 @@ export const ContactPage: React.FC = () => {
               <div className="pt-2">
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#44342E] hover:bg-[#5A453D] text-[#FFFFFF] font-bold text-xs uppercase tracking-wider py-4 px-8 rounded-full transition-colors cursor-pointer shadow-xs active:scale-98"
                 >
                   <Send className="w-4 h-4" />

@@ -52,6 +52,15 @@ export function refreshMetaConsent(): void {
   if(!hasMetaConsent()) window.fbq?.('consent','revoke');
 }
 
+/** Capture only consented visitor identifiers for later server-side qualification. */
+export function captureMetaContext() {
+  if (!hasMetaConsent()) return undefined;
+  const consent = JSON.parse(localStorage.getItem('nido_cookie_consent') || 'null');
+  return {marketingConsent:true,consentAt:consent.timestamp,
+    expiresAt:Math.min(consent.expiresAt || consent.timestamp+180*86400000,consent.timestamp+180*86400000),
+    fbp:getOrCreateFbp(),fbc:getOrCreateFbc(),eventSourceUrl:sanitizeEventUrl(window.location.href)};
+}
+
 /**
  * Helper to read cookie values by name
  */

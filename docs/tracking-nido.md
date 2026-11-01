@@ -31,3 +31,15 @@ Visualizações, visitantes anônimos, cliques em links/botões, tratamentos e t
 ## Ambientes
 
 Mesmas dependências, código e contratos nos três ambientes. Preview usa origem própria e `isPreview`, portanto seus eventos são excluídos dos relatórios públicos. MySQL e tokens ficam na configuração de execução do ambiente; o preview precisa de conectividade e variáveis equivalentes para usar as integrações. O código não pode criar dados fictícios para disfarçar banco indisponível. Produção deve responder `nido-analytics-v2`, `storage=mysql`, `ready=true` após implantação.
+
+
+## Funil e qualificação no servidor (novembro/2026)
+
+- WhatsAppFormOpen: abertura do modal, Pixel + CAPI com mesmo event_id e consentimento de marketing.
+- Contact: somente depois do retorno success:true e lead.id do CRM. Falha de cadastro mantém o formulário aberto, sem conversão.
+- Lead: primeira qualificação (Agendado, Compareceu ou Convertido), por ciclo de atendimento. Disparo exclusivamente no servidor, após persistência do status manual ou recebido do Kommo. action_source=system_generated identifica a qualificação no CRM; analisar a coluna Leads, sem presumir que a subcategoria Leads no site será idêntica.
+- Attribution JSON guarda os identificadores do visitante e a evidência do consentimento de marketing recebidos no formulário. IP/UA são capturados no servidor no cadastro original, nunca no navegador do operador.
+- Sem consentimento verificável, não fazer backfill de conversões históricas. Cidade/estado/país desconhecidos não são inventados.
+- nido_meta_outbox possui chave única por lead/ciclo. A fila continua após restart, com lease de 2 minutos e retentativas do mesmo event_id/time. Somente events_received>0 marca enviado. Rejeição 400 fica failed, expiração de 7 dias/consentimento ou lead excluído fica skipped. Falhas transitórias ficam pending com backoff.
+- GET /api/meta/crm-status informa prontidão e totais da fila, sem retornar dados de contatos. GET /api/meta/status informa nido-meta-v3 e crmQualification.ready.
+- UTMs dos anúncios: utm_source={{site_source_name}}, utm_medium=paid_social, utm_campaign={{campaign.name}}, utm_term={{adset.name}}, utm_content={{ad.name}}, campaign_id={{campaign.id}}, adset_id={{adset.id}}, ad_id={{ad.id}}, placement={{placement}}. Preservar destino; não duplicar UTMs na URL base e em Parâmetros de URL.

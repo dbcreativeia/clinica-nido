@@ -108,7 +108,8 @@ export function initTrafficAttribution(): TrafficData {
   } 
   // 3. Meta Ads (fbclid or Meta sources with paid medium)
   else if (
-    (['facebook', 'instagram', 'meta', 'fb', 'ig', 'an', 'msg', 'th'].includes(lowerSource) && isPaidMedium)
+    (['facebook', 'instagram', 'meta', 'fb', 'ig', 'an', 'msg', 'th'].includes(lowerSource) && isPaidMedium) ||
+    (lowerSource === 'meta-ads' && (isPaidMedium || ['instagram','facebook'].includes(lowerMedium)))
   ) {
     channel = 'Meta Ads';
   } 
@@ -221,6 +222,7 @@ export function getStoredTrafficAttribution(): TrafficData | null {
     if (raw) {
       const parsed = JSON.parse(raw);
       const age = Date.now() - Date.parse(parsed.capturedAt);
+      if(parsed.source==='meta-ads' && ['instagram','facebook','paid_social','cpc'].includes(parsed.medium)){parsed.channel='Meta Ads';parsed.adSet=parsed.adSet||parsed.term||'';}
       if (!Number.isFinite(age) || age < 0 || age > 30 * 86400000) return null;
       if (['padrao','campanha_google_ads','campanha_meta_ads'].includes(parsed.campaign)) parsed.campaign = '';
       return parsed;

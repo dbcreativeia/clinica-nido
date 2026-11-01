@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
 import { sendMetaConversionEvent } from './meta-capi.mjs';
+import { normalizeMetaContext, initCrmMetaOutbox, createCrmMetaQueue } from './crm-meta.mjs';
 import { normalizeLocation, normalizeAttribution, parseContext } from './tracking-context.mjs';
 import { initAnalyticsDatabase, recordAnalyticsEvent, getAnalyticsStats } from './analytics-engine.mjs';
 
@@ -249,13 +250,14 @@ async function startServer() {
     const isProdEnv = process.env.NODE_ENV === 'production';
     const testModeActive = !isProdEnv && process.env.META_FORCE_TEST_MODE === 'true' && Boolean(TEST_EVENT_CODE);
     res.json({
-      version: 'nido-meta-v2',
+      version: 'nido-meta-v3',
       status: 'active',
       pixelId: PIXEL_ID,
       tokenConfigured: Boolean(CAPI_TOKEN),
       testCodeConfigured: Boolean(TEST_EVENT_CODE),
       testModeActive,
       productionDomains: PRODUCTION_DOMAINS,
+      crmQualification: {mode:'server-outbox',ready:Boolean(crmMetaQueue)},
       timestamp: new Date().toISOString()
     });
   });
@@ -279,6 +281,7 @@ async function startServer() {
         return res.status(400).json({ error: 'eventName is required' });
       }
 
+      if(eventName==='Lead') return res.status(400).json({success:false,error:'Lead qualification is dispatched by the CRM server.'});
       if(marketingConsent!==true) return res.status(400).json({success:false,error:'Marketing consent required'});
       if(typeof eventName!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(eventName) || typeof eventId!=='string' || !/^nido_[a-z0-9_]{1,150}$/.test(eventId)) return res.status(400).json({success:false,error:'Invalid event identifiers'});
       const eventSeconds=Number(eventTime);
@@ -309,7 +312,7 @@ async function startServer() {
       const normalizedLn = userData.ln ? hashSha256(normalizeText(userData.ln)) : undefined;
       const normalizedCt = userData.ct ? hashSha256(normalizeText(userData.ct)) : undefined;
       const normalizedSt = userData.st ? hashSha256(userData.st.trim().toLowerCase()) : undefined;
-      const normalizedCountry = hashSha256(userData.country ? userData.country.trim().toLowerCase() : 'br');
+      const normalizedCountry = userData.country ? hashSha256(userData.country.trim().toLowerCase()) : undefined;
       const normalizedZip = userData.zp ? hashSha256(String(userData.zp).replace(/\D/g,'')) : undefined;
       const normalizedExternalId = userData.external_id ? hashSha256(userData.external_id.trim()) : undefined;
 
@@ -590,6 +593,39 @@ async function startServer() {
     }
   }
 
+  let crmMetaQueue: ReturnType<typeof createCrmMetaQueue> | null = null;
+  let metaQueueStarting: Promise<void> | null = null;
+  async function ensureMetaQueue(): Promise<void> {
+    if (crmMetaQueue || !dbPool) return;
+    if (!metaQueueStarting) metaQueueStarting=(async()=>{
+      await initCrmMetaOutbox(dbPool);
+      crmMetaQueue=createCrmMetaQueue({pool:dbPool,send:async(payload: any)=> {
+        if(process.env.NODE_ENV!=='production') return {success:false,events_received:0};
+        return sendMetaConversionEvent(payload,{token:CAPI_TOKEN,pixelId:PIXEL_ID,maxRetries:3});
+      }});
+    })().finally(()=>{metaQueueStarting=null;});
+    await metaQueueStarting;
+  }
+  async function enqueueQualifiedMeta(id: string) {
+    try { await ensureMetaQueue(); return await crmMetaQueue?.qualify(id); }
+    catch { console.warn('[CRM Meta] Qualification delivery pending database recovery.'); return {status:'unavailable'}; }
+  }
+  async function processCrmMetaQueue() {
+    if(!isDbReady || !dbPool) return;
+    await ensureMetaQueue();
+    const [rows]=await dbPool.query<mysql.RowDataPacket[]>(`SELECT id FROM nido_leads WHERE deleted_at IS NULL AND status IN ('agendado','compareceu','convertido') AND COALESCE(meta_lead_sent,0)=0 AND JSON_EXTRACT(attribution_context,'$.meta.marketingConsent')=true AND CAST(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.meta.expiresAt')) AS UNSIGNED)>? AND NOT EXISTS (SELECT 1 FROM nido_meta_outbox o WHERE o.lead_id=nido_leads.id AND o.cycle_id=COALESCE(JSON_UNQUOTE(JSON_EXTRACT(nido_leads.procedure_cycles,'$[0].cycleId')),CONCAT('initial_',nido_leads.id))) LIMIT 100`,[Date.now()]);
+    for(const row of rows) await crmMetaQueue?.qualify(row.id);
+    await crmMetaQueue?.flush();
+  }
+
+  app.get('/api/meta/crm-status',async(_req: Request,res: Response)=>{
+    try {
+      await ensureMetaQueue();
+      const [rows]=await requireLeadDatabase().query<mysql.RowDataPacket[]>('SELECT state,COUNT(*) AS total FROM nido_meta_outbox GROUP BY state');
+      return res.json({version:'nido-crm-meta-v1',ready:Boolean(crmMetaQueue),counts:Object.fromEntries(rows.map(r=>[r.state,Number(r.total)]))});
+    } catch {return res.status(503).json({ready:false,error:'Qualification queue unavailable'});}
+  });
+
   async function initDatabase(): Promise<void> {
     if (!dbPool) return;
     try {
@@ -644,6 +680,7 @@ async function startServer() {
         catch (error: any) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
       }
       isDbReady = true;
+      await ensureMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox initialization pending.'));
       console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
     } catch (err) {
       console.error('[MySQL Init Leads Table Error]', err);
@@ -655,6 +692,9 @@ async function startServer() {
 
   // Trigger table check on boot and await
   await initDatabase().catch(console.error);
+  const metaDeliveryTimer=setInterval(()=>{void processCrmMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox retry pending.'));},30000);
+  metaDeliveryTimer.unref();
+  void processCrmMetaQueue().catch(()=>{});
   let databaseRetry: Promise<void> | null = null;
   let analyticsRetry: Promise<void> | null = null;
 
@@ -793,7 +833,11 @@ async function startServer() {
 
   const kommoRepo = {
     list: readLeads,
-    apply: async (id: string, k: any, status: string, options: any = {}) => createKommoRepository(requireLeadDatabase(), readLeads).apply(id,k,status,options),
+    apply: async (id: string, k: any, status: string, options: any = {}) => {
+      const applied=await createKommoRepository(requireLeadDatabase(),readLeads).apply(id,k,status,options);
+      if(applied) {await enqueueQualifiedMeta(id);void crmMetaQueue?.flush().catch(()=>{});}
+      return applied;
+    },
     remove: async (id: string) => createKommoRepository(requireLeadDatabase(), readLeads).remove(id)
   };
   async function kommoRequest(resource: string): Promise<any> {
@@ -875,7 +919,7 @@ async function startServer() {
         : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '');
 
       const verifiedLocation = normalizeLocation(req.body);
-      const attribution = normalizeAttribution({...req.body.attribution, campaign:trafficCampaign, source:trafficSource, medium:trafficMedium, content:trafficContent, term:trafficTerm});
+      const attribution = {...normalizeAttribution({...req.body.attribution, campaign:trafficCampaign, source:trafficSource, medium:trafficMedium, content:trafficContent, term:trafficTerm}),meta:normalizeMetaContext(req.body.metaContext,{ip:extractRealClientIp(req),userAgent:req.headers['user-agent'] || ''})};
 
       const cleanDigitsPhone = normalizedPhone(phone);
       const leads = await readLeads();
@@ -924,6 +968,7 @@ async function startServer() {
 
         existing.serviceInterest = `${serviceInterest} (Recorrente: ${existingCycles.length}º ciclo)`;
         existing.procedureCycles = existingCycles;
+        existing.metaLeadSent=false;existing.metaLeadSentAt=undefined;
         existing.status = 'novo'; // Re-open for negotiation of new procedure
         existing.updatedAt = new Date().toISOString();
         Object.assign(existing, verifiedLocation);
@@ -984,7 +1029,7 @@ async function startServer() {
         const updated = await updateLeadFields(leadToSave.id, {
           status: leadToSave.status, serviceInterest: leadToSave.serviceInterest, procedureCycles: leadToSave.procedureCycles,
           sessionJourney: leadToSave.sessionJourney, viewedTreatments: leadToSave.viewedTreatments,
-          attribution, locationContext: verifiedLocation
+          attribution, locationContext: verifiedLocation,metaLeadSent:false,metaLeadSentAt:null
         });
         if (!updated) return res.status(409).json({success:false,error:'O contato foi excluído durante a operação. Envie novamente.'});
       }
@@ -1074,13 +1119,9 @@ async function startServer() {
           if (item.serviceInterest) currentLeads[existingIdx].serviceInterest = item.serviceInterest;
           if (item.notes) currentLeads[existingIdx].notes = item.notes;
           currentLeads[existingIdx].updatedAt = new Date().toISOString();
-          if (isQualified && syncToAds) {
-            currentLeads[existingIdx].metaLeadSent = true;
-            currentLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
-            adsSyncedCount++;
-          }
           const entry = currentLeads[existingIdx];
-          await updateLeadFields(entry.id, {status:entry.status,serviceInterest:entry.serviceInterest,notes:entry.notes,metaLeadSent:entry.metaLeadSent,metaLeadSentAt:entry.metaLeadSentAt});
+          await updateLeadFields(entry.id, {status:entry.status,serviceInterest:entry.serviceInterest,notes:entry.notes});
+          if(isQualified && syncToAds && (await enqueueQualifiedMeta(entry.id))?.status==='queued')adsSyncedCount++;
         } else {
           // Add new lead
           const newLead: StoredLead = {
@@ -1101,8 +1142,8 @@ async function startServer() {
             neighborhood: 'Não informada',
             status,
             notes: item.notes || 'Importado do funil Kommo CRM.',
-            metaLeadSent: isQualified && syncToAds,
-            metaLeadSentAt: (isQualified && syncToAds) ? new Date().toISOString() : undefined,
+            metaLeadSent: false,
+            metaLeadSentAt: undefined,
             createdAt: item.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
@@ -1110,9 +1151,7 @@ async function startServer() {
           await insertLead(newLead);
           currentLeads.unshift(newLead);
           importedCount++;
-          if (isQualified && syncToAds) {
-            adsSyncedCount++;
-          }
+          if(isQualified && syncToAds && (await enqueueQualifiedMeta(newLead.id))?.status==='queued')adsSyncedCount++;
         }
       }
 
@@ -1120,7 +1159,7 @@ async function startServer() {
 
       return res.json({
         success: true,
-        message: `${importedCount} novos lead(s) importados e ${adsSyncedCount} calibrados para Meta/Google.`,
+        message: `${importedCount} novos lead(s) importados e ${adsSyncedCount} qualificações elegíveis na fila da Meta.`,
         importedCount,
         adsSyncedCount,
         totalLeads: currentLeads.length
@@ -1146,7 +1185,7 @@ async function startServer() {
   app.patch('/api/leads/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { status, notes, metaLeadSent, metaLeadSentAt } = req.body;
+      const { status, notes } = req.body;
       const leads = await readLeads();
       const index = leads.findIndex((l) => l.id === id);
 
@@ -1156,13 +1195,13 @@ async function startServer() {
 
       if (status) leads[index].status = status;
       if (typeof notes === 'string') leads[index].notes = notes;
-      if (typeof metaLeadSent === 'boolean') leads[index].metaLeadSent = metaLeadSent;
-      if (metaLeadSentAt) leads[index].metaLeadSentAt = metaLeadSentAt;
       leads[index].updatedAt = new Date().toISOString();
 
-      const updated = await updateLeadFields(id, {status,notes,metaLeadSent,metaLeadSentAt});
+      const updated = await updateLeadFields(id, {status,notes});
       if (!updated) return res.status(404).json({success:false,error:'Lead não encontrado'});
-      return res.json({ success: true, lead: leads[index] });
+      const metaDelivery=await enqueueQualifiedMeta(id);
+      void crmMetaQueue?.flush().catch(()=>{});
+      return res.json({ success: true, lead: leads[index],metaDelivery });
     } catch (err: unknown) {
       console.error('[Update Lead Error]', err);
       return res.status(500).json({ error: 'Erro ao atualizar lead' });
@@ -1358,7 +1397,7 @@ async function startServer() {
     try {
       const result = await synchronizeKommo({repo:kommoRepo,request:kommoRequest});
       return res.json({success:true,...result,siteLeadsUpdatedCount:result.updatedCount,
-        message:`${result.updatedCount} lead(s) atualizado(s) do Kommo. A sincronização de status não envia eventos para anúncios.`});
+        message:`${result.updatedCount} lead(s) atualizado(s) do Kommo. Qualificações elegíveis são enviadas pela fila persistente da Meta.`});
     } catch (error) {
       console.error('[Kommo Sync Error]', error instanceof Error ? error.message : 'Unknown error');
       return res.status(503).json({success:false,version:CRM_VERSION,error:'Sincronização incompleta: verifique a conexão com MySQL e Kommo.'});
