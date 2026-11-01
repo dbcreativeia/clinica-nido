@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, MapPin, X, Lock, CheckCircle2, ChevronRight, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { requestBrowserLocation } from '../utils/internalAnalytics';
+import { requestBrowserLocation, clearVisitorLocation } from '../utils/internalAnalytics';
 import { initTrafficAttribution } from '../utils/trafficSource';
 import { trackMetaPageView, refreshMetaConsent } from '../utils/metaConversions';
 
@@ -70,12 +70,19 @@ export const ConsentBanner: React.FC = () => {
 
   const handleTriggerGeo = async () => {
     setGeoStatus('prompting');
+    // This action explicitly requests GPS; save the choice before collecting it.
+    const current = JSON.parse(localStorage.getItem('nido_cookie_consent') || '{}');
+    localStorage.setItem('nido_cookie_consent', JSON.stringify({...current,geo:true,timestamp:Date.now()}));
+    setGeoConsent(true);
     try {
       const loc = await requestBrowserLocation();
-      if (loc) {
+      if (loc?.locationSource === 'browser_gps') {
         setGeoStatus('granted');
       } else {
         setGeoStatus('denied');
+        setGeoConsent(false);
+        const saved = JSON.parse(localStorage.getItem('nido_cookie_consent') || '{}');
+        localStorage.setItem('nido_cookie_consent',JSON.stringify({...saved,geo:false}));
       }
     } catch {
       setGeoStatus('denied');
@@ -116,6 +123,7 @@ export const ConsentBanner: React.FC = () => {
   };
 
   const handleRejectNonEssential = () => {
+    clearVisitorLocation();
     localStorage.setItem(
       'nido_cookie_consent',
       JSON.stringify({ 
@@ -143,6 +151,7 @@ export const ConsentBanner: React.FC = () => {
   };
 
   const handleSaveCustom = async () => {
+    if (!geoConsent) { clearVisitorLocation(); setGeoStatus('idle'); }
     localStorage.setItem(
       'nido_cookie_consent',
       JSON.stringify({ 
@@ -179,7 +188,7 @@ export const ConsentBanner: React.FC = () => {
   if (!isVisible) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#FFFFFF] border-t border-[#E5DAD0] shadow-2xl p-3 sm:p-5 text-[#241E1B] animate-in slide-in-from-bottom duration-200">
+    <div data-analytics-ignore className="fixed bottom-0 left-0 right-0 z-50 bg-[#FFFFFF] border-t border-[#E5DAD0] shadow-2xl p-3 sm:p-5 text-[#241E1B] animate-in slide-in-from-bottom duration-200">
       <div className="max-w-5xl mx-auto flex flex-col gap-2.5 sm:gap-3">
         
         {/* Header & Compact Close */}

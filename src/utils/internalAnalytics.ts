@@ -3,7 +3,8 @@
  * Monitors route clicks, page views, treatment views, CTA clicks, and visitor location with MySQL persistence.
  */
 
-import { getStoredTrafficAttribution } from './trafficSource.ts';
+import { getStoredTrafficAttribution, initTrafficAttribution } from './trafficSource.ts';
+import { normalizeLocation } from '../../tracking-context.mjs';
 import { TREATMENTS } from '../data/treatments.ts';
 import { TECHNOLOGIES } from '../data/technologies.ts';
 
@@ -13,6 +14,10 @@ export interface VisitorLocation {
   neighborhood: string;
   latitude?: number;
   longitude?: number;
+  geoConsent?: boolean;
+  locationSource?: string;
+  locationCapturedAt?: string | null;
+  accuracy?: number;
 }
 
 const GEO_STORAGE_KEY = 'nido_visitor_geo';
@@ -113,7 +118,8 @@ export function requestBrowserLocation(): Promise<VisitorLocation | null> {
   };
 
   if (typeof window === 'undefined' || !navigator.geolocation) {
-    return Promise.resolve(fallbackLocation);
+    clearVisitorLocation();
+    return Promise.resolve(null);
   }
 
   return new Promise((resolve) => {
@@ -126,25 +132,49 @@ export function requestBrowserLocation(): Promise<VisitorLocation | null> {
             neighborhood: 'Não informada',
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude
+            ,geoConsent: true,
+            locationSource: 'browser_gps',
+            locationCapturedAt: new Date().toISOString(),
+            accuracy: pos.coords.accuracy
           };
 
           try {
             sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(locationObj));
           } catch {}
+          window.dispatchEvent(new CustomEvent('nido:location-changed'));
           resolve(locationObj);
         },
         () => {
           try {
             sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(fallbackLocation));
           } catch {}
-          resolve(fallbackLocation);
+          clearVisitorLocation();
+          resolve(null);
         },
         { timeout: 5000, enableHighAccuracy: true }
       );
     } catch {
-      resolve(fallbackLocation);
+      clearVisitorLocation();
+      resolve(null);
     }
   });
+}
+
+export function clearVisitorLocation(): void {
+  try { sessionStorage.removeItem(GEO_STORAGE_KEY); } catch {}
+}
+
+export function getCurrentVisitorLocation(): VisitorLocation {
+  try {
+    const consent = JSON.parse(localStorage.getItem('nido_cookie_consent') || '{}');
+    const age = Date.now() - consent.timestamp;
+    if (consent.geo !== true || !Number.isFinite(age) || age < 0 || age > CONSENT_DURATION_MS ||
+      (consent.expiresAt && Date.now() > consent.expiresAt)) {
+      clearVisitorLocation();
+      return normalizeLocation({});
+    }
+    return normalizeLocation(JSON.parse(sessionStorage.getItem(GEO_STORAGE_KEY) || '{}'));
+  } catch { return normalizeLocation({}); }
 }
 
 export async function getVisitorLocation(): Promise<VisitorLocation> {
@@ -156,15 +186,7 @@ export async function getVisitorLocation(): Promise<VisitorLocation> {
 
   if (typeof window === 'undefined') return fallback;
 
-  try {
-    const cached = sessionStorage.getItem(GEO_STORAGE_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed && parsed.city) return parsed;
-    }
-  } catch {}
-
-  return fallback;
+  return getCurrentVisitorLocation();
 }
 
 function generateShortEventId(prefix: string): string {
@@ -179,11 +201,14 @@ export function sendAnalyticsEventPayload(payload: Record<string, unknown>, useB
   const pagePath = String(payload.pagePath || window.location.pathname);
   if (isIgnoredPath(pagePath)) return;
 
-  const attribution = getStoredTrafficAttribution();
+  const attribution = initTrafficAttribution();
+  const location = getCurrentVisitorLocation();
   const isPreview = !['nidoestetica.com.br', 'www.nidoestetica.com.br'].includes(window.location.hostname.toLowerCase());
 
   const body = JSON.stringify({
     ...payload,
+    ...location,
+    attribution,
     trafficChannel: payload.trafficChannel || attribution?.channel || 'Direto',
     trafficSource: payload.trafficSource || attribution?.source || 'direto',
     visitorId: getVisitorId(),
@@ -247,6 +272,11 @@ function startHeartbeat() {
 export function flushCurrentDuration(): void {
   if (currentPagePath && pageEventId) {
     const seconds = getActiveDurationSeconds();
+    try {
+      const journey=JSON.parse(sessionStorage.getItem(SESSION_JOURNEY_KEY)||'null');
+      const last=journey?.steps?.[journey.steps.length-1];
+      if(last?.path===currentPagePath) {last.durationSeconds=seconds;sessionStorage.setItem(SESSION_JOURNEY_KEY,JSON.stringify(journey));}
+    } catch {}
     sendAnalyticsEventPayload({
       type: 'page_view',
       eventId: pageEventId,
@@ -363,7 +393,8 @@ export function trackCTAClick(label: string, location?: string): void {
     type: 'cta_click',
     eventId,
     label,
-    pagePath: location || (typeof window !== 'undefined' ? window.location.pathname : '/')
+    name: location || '',
+    pagePath: typeof window !== 'undefined' ? window.location.pathname : '/'
   });
 }
 
@@ -503,6 +534,7 @@ function setupGlobalListeners() {
     if (isIgnoredPath(currentPath)) return;
 
     const target = ev.target as HTMLElement | null;
+    if (target?.closest('[data-analytics-ignore]')) return;
     if (!target) return;
 
     // Skip form inputs, textareas, selects

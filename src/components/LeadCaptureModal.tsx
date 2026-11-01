@@ -7,7 +7,7 @@ import {
 } from '../utils/whatsapp';
 import { getStoredTrafficAttribution, initTrafficAttribution } from '../utils/trafficSource';
 import { trackMetaEvent } from '../utils/metaConversions';
-import { getVisitorLocation, getSessionViewedTreatments, getSessionJourney } from '../utils/internalAnalytics';
+import { getVisitorLocation, getSessionViewedTreatments, getSessionJourney, getVisitorId, getSessionId, hasAnalyticsConsent } from '../utils/internalAnalytics';
 
 interface ModalDetail {
   message: string;
@@ -126,6 +126,8 @@ export const LeadCaptureModal: React.FC = () => {
 
       // Save lead locally as immediate fallback
       const leadData = {
+        attribution: {...traffic, visitorId: hasAnalyticsConsent() ? getVisitorId() : '', sessionId: hasAnalyticsConsent() ? getSessionId() : ''},
+        ...visitorGeo,
         name: cleanName,
         phone,
         email: cleanEmail,

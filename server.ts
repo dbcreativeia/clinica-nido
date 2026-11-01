@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
 import { sendMetaConversionEvent } from './meta-capi.mjs';
+import { normalizeLocation, normalizeAttribution, parseContext } from './tracking-context.mjs';
 import { initAnalyticsDatabase, recordAnalyticsEvent, getAnalyticsStats } from './analytics-engine.mjs';
 
 dotenv.config();
@@ -502,6 +503,11 @@ async function startServer() {
     trafficCampaign: string;
     trafficTerm?: string;
     trafficContent?: string;
+    attribution?: Record<string, any>;
+    geoConsent?: boolean;
+    locationSource?: string;
+    locationCapturedAt?: string | null;
+    accuracy?: number;
     fbclid?: string;
     gclid?: string;
     referrer?: string;
@@ -611,7 +617,7 @@ async function startServer() {
         await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
       } catch {}
 
-      for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0']) {
+      for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0', 'location_context JSON NULL', 'attribution_context JSON NULL']) {
         try { await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN ${definition}`); }
         catch (error: any) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
       }
@@ -674,11 +680,15 @@ async function startServer() {
           referrer: r.referrer,
           pagePath: r.page_path,
           clientIp: r.client_ip,
-          city: r.city,
-          state: r.state,
-          neighborhood: r.neighborhood,
-          latitude: r.latitude ? Number(r.latitude) : undefined,
-          longitude: r.longitude ? Number(r.longitude) : undefined,
+          ...normalizeLocation(parseContext(r.location_context), false),
+          attribution: normalizeAttribution(r.attribution_context ? parseContext(r.attribution_context) : {
+            campaign:r.traffic_campaign,source:r.traffic_source,medium:r.traffic_medium,content:r.traffic_content,term:r.traffic_term,
+            campaignId:/^\d+$/.test(r.traffic_campaign||'') ? r.traffic_campaign : '',
+            adSet:/^\d+$/.test(r.traffic_term||'') ? '' : r.traffic_term,
+            adSetId:/^\d+$/.test(r.traffic_term||'') && String(r.traffic_channel||'').includes('Meta') ? r.traffic_term : '',
+            adId:/^\d+$/.test(r.traffic_content||'') ? r.traffic_content : '',
+            adName:/^\d+$/.test(r.traffic_content||'') ? '' : r.traffic_content
+          }),
           viewedTreatments: typeof r.viewed_treatments === 'string' ? JSON.parse(r.viewed_treatments || '[]') : (r.viewed_treatments || []),
           sessionJourney: typeof r.session_journey === 'string' ? JSON.parse(r.session_journey || 'null') : (r.session_journey || undefined),
           procedureCycles: typeof r.procedure_cycles === 'string' ? JSON.parse(r.procedure_cycles || '[]') : (r.procedure_cycles || []),
@@ -703,8 +713,8 @@ async function startServer() {
               traffic_term, traffic_content, fbclid, gclid, referrer, page_path,
               client_ip, city, state, neighborhood, latitude, longitude,
               viewed_treatments, session_journey, procedure_cycles, status, notes, meta_lead_sent, meta_lead_sent_at,
-              kommo_lead_id, kommo_status_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              kommo_lead_id, kommo_status_id, created_at, updated_at, location_context, attribution_context
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
             l.id,
             l.name || '',
@@ -724,11 +734,11 @@ async function startServer() {
             l.referrer || '',
             l.pagePath || '/',
             l.clientIp || '',
-            l.city || 'São Paulo',
-            l.state || 'SP',
-            l.neighborhood || 'Água Branca',
-            l.latitude || null,
-            l.longitude || null,
+            l.city || 'Não informada',
+            l.state || 'Não informada',
+            l.neighborhood || 'Não informada',
+            l.latitude ?? null,
+            l.longitude ?? null,
             JSON.stringify(l.viewedTreatments || []),
             l.sessionJourney ? JSON.stringify(l.sessionJourney) : null,
             JSON.stringify(l.procedureCycles || []),
@@ -739,18 +749,20 @@ async function startServer() {
             l.kommoLeadId || null,
             l.kommoStatusId || null,
             l.createdAt ? new Date(l.createdAt) : new Date(),
-            l.updatedAt ? new Date(l.updatedAt) : new Date()
+            l.updatedAt ? new Date(l.updatedAt) : new Date(),
+            JSON.stringify(normalizeLocation(l, false)),
+            JSON.stringify(normalizeAttribution(l.attribution || {}))
           ]);
   }
 
   async function updateLeadFields(id: string, changes: Record<string, any>): Promise<boolean> {
     const columns: Record<string, string> = {
       status:'status', notes:'notes', metaLeadSent:'meta_lead_sent', metaLeadSentAt:'meta_lead_sent_at',
-      serviceInterest:'service_interest', procedureCycles:'procedure_cycles', sessionJourney:'session_journey', viewedTreatments:'viewed_treatments'
+      serviceInterest:'service_interest', procedureCycles:'procedure_cycles', sessionJourney:'session_journey', viewedTreatments:'viewed_treatments', attribution:'attribution_context', locationContext:'location_context'
     };
     const entries = Object.entries(changes).filter(([key,value]) => columns[key] && value !== undefined);
     if (!entries.length) return true;
-    const jsonKeys = ['procedureCycles','sessionJourney','viewedTreatments'];
+    const jsonKeys = ['procedureCycles','sessionJourney','viewedTreatments','attribution','locationContext'];
     const values = entries.map(([key,value]) => jsonKeys.includes(key) ? JSON.stringify(value) : key === 'metaLeadSentAt' ? (value ? new Date(value) : null) : key === 'metaLeadSent' ? Number(Boolean(value)) : value);
     const [result] = await requireLeadDatabase().query<mysql.ResultSetHeader>(
       `UPDATE nido_leads SET ${entries.map(([key])=>`${columns[key]}=?`).join(',')}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`, [...values,id]);
@@ -840,23 +852,8 @@ async function startServer() {
         ? rawIp[0]
         : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '');
 
-      // Only use geoPool fallback if the client did NOT provide coordinates
-      const hasExactCoords = typeof latitude === 'number' && typeof longitude === 'number';
-      const geoPool = [
-        { city: 'São Paulo', state: 'SP', neighborhood: 'Jardins', latitude: -23.5673, longitude: -46.6692 },
-        { city: 'São Paulo', state: 'SP', neighborhood: 'Moema', latitude: -23.6041, longitude: -46.6668 },
-        { city: 'São Paulo', state: 'SP', neighborhood: 'Itaim Bibi', latitude: -23.5847, longitude: -46.6789 },
-        { city: 'São Paulo', state: 'SP', neighborhood: 'Pinheiros', latitude: -23.5614, longitude: -46.6922 },
-        { city: 'São Paulo', state: 'SP', neighborhood: 'Vila Nova Conceição', latitude: -23.5931, longitude: -46.6715 },
-        { city: 'Barueri', state: 'SP', neighborhood: 'Alphaville', latitude: -23.4988, longitude: -46.8522 }
-      ];
-      const randomGeo = geoPool[Math.floor(Math.random() * geoPool.length)];
-
-      const leadCity = city || (hasExactCoords ? 'São Paulo' : randomGeo.city);
-      const leadState = state || (hasExactCoords ? 'SP' : randomGeo.state);
-      const leadNeighborhood = neighborhood || (hasExactCoords ? 'GPS Exato' : randomGeo.neighborhood);
-      const leadLat = hasExactCoords ? latitude : randomGeo.latitude;
-      const leadLng = hasExactCoords ? longitude : randomGeo.longitude;
+      const verifiedLocation = normalizeLocation(req.body);
+      const attribution = normalizeAttribution({...req.body.attribution, campaign:trafficCampaign, source:trafficSource, medium:trafficMedium, content:trafficContent, term:trafficTerm});
 
       const cleanDigitsPhone = normalizedPhone(phone);
       const leads = await readLeads();
@@ -907,6 +904,8 @@ async function startServer() {
         existing.procedureCycles = existingCycles;
         existing.status = 'novo'; // Re-open for negotiation of new procedure
         existing.updatedAt = new Date().toISOString();
+        Object.assign(existing, verifiedLocation);
+        existing.attribution = attribution;
         if (sessionJourney) existing.sessionJourney = sessionJourney;
         if (viewedTreatments && viewedTreatments.length > 0) {
           existing.viewedTreatments = Array.from(new Set([...(existing.viewedTreatments || []), ...viewedTreatments]));
@@ -935,11 +934,8 @@ async function startServer() {
           referrer,
           pagePath,
           clientIp,
-          city: leadCity,
-          state: leadState,
-          neighborhood: leadNeighborhood,
-          latitude: leadLat,
-          longitude: leadLng,
+          ...verifiedLocation,
+          attribution,
           viewedTreatments,
           sessionJourney,
           procedureCycles: [
@@ -965,7 +961,8 @@ async function startServer() {
       else {
         const updated = await updateLeadFields(leadToSave.id, {
           status: leadToSave.status, serviceInterest: leadToSave.serviceInterest, procedureCycles: leadToSave.procedureCycles,
-          sessionJourney: leadToSave.sessionJourney, viewedTreatments: leadToSave.viewedTreatments
+          sessionJourney: leadToSave.sessionJourney, viewedTreatments: leadToSave.viewedTreatments,
+          attribution, locationContext: verifiedLocation
         });
         if (!updated) return res.status(409).json({success:false,error:'O contato foi excluído durante a operação. Envie novamente.'});
       }
@@ -1077,9 +1074,9 @@ async function startServer() {
             trafficMedium: 'crm_sync',
             trafficCampaign: 'kommo_qualificados',
             pagePath: '/kommo-import',
-            city: item.city || 'São Paulo',
-            state: item.state || 'SP',
-            neighborhood: item.neighborhood || 'Água Branca',
+            city: 'Não informada',
+            state: 'Não informada',
+            neighborhood: 'Não informada',
             status,
             notes: item.notes || 'Importado do funil Kommo CRM.',
             metaLeadSent: isQualified && syncToAds,
@@ -1357,7 +1354,7 @@ async function startServer() {
       const stats = await getAnalyticsStats(dbPool);
       return res.json({
         success: true,
-        version: 'nido-analytics-v1',
+        version: 'nido-analytics-v2',
         storage: 'mysql',
         ready: true,
         stats

@@ -77,6 +77,8 @@ interface AnalyticsData {
     qualifiedLeads?: number;
     lostLeads?: number;
   };
+  campaigns?: Array<{channel:string;campaign:string;campaignId:string;adSet:string;adSetId:string;adName:string;adId:string;placement:string;visitors:number;sessions:number;pageViews:number;clicks:number}>;
+  pages?: Array<{path:string;views:number;visitors:number;avgSeconds:number}>;
   routes: RouteStat[];
   treatments: TreatmentStat[];
   ctaClicks: CTAClickStat[];
@@ -89,7 +91,7 @@ export const InternalAnalyticsDashboard: React.FC = () => {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'geral' | 'rotas' | 'tratamentos' | 'ctas' | 'locais'>('geral');
+  const [activeSubTab, setActiveSubTab] = useState<'geral' | 'rotas' | 'tratamentos' | 'ctas' | 'locais' | 'origens'>('geral');
 
   const fetchAnalytics = async () => {
     setIsLoading(true);
@@ -187,6 +189,27 @@ export const InternalAnalyticsDashboard: React.FC = () => {
         </div>
       </div>
 
+      <div className="bg-white border border-[#E5DAD0] rounded-2xl p-5 space-y-3">
+        <button onClick={()=>setActiveSubTab(activeSubTab==='origens'?'geral':'origens')} className="text-sm font-bold text-[#44342E] cursor-pointer">Campanhas, conjuntos e anúncios: {activeSubTab==='origens'?'ocultar':'ver detalhes'}</button>
+        <p className="text-xs text-[#66534B]">Dados coletados com consentimento. Localização sem GPS válido: Não informada. Campanha ausente no link: Não informada. Os IDs identificam anúncios, não cada variação automática de criativo.</p>
+        {activeSubTab==='origens' && <>
+          <div className="overflow-x-auto"><table className="w-full text-xs text-left"><thead><tr>{['Canal','Campanha / ID','Conjunto ou grupo / ID','Anúncio / ID','Posicionamento','Visitantes','Sessões','Páginas','Cliques'].map(label=><th className="p-2 border-b" key={label}>{label}</th>)}</tr></thead><tbody>
+            {(data.campaigns||[]).map((row,i)=><tr key={i} className="border-b">
+              <td className="p-2">{row.channel}</td>
+              <td className="p-2">{row.campaign||'Não informada'}<small className="block font-mono">{row.campaignId||'Sem ID'}</small></td>
+              <td className="p-2">{row.adSet||'Não informado'}<small className="block font-mono">{row.adSetId||'Sem ID'}</small></td>
+              <td className="p-2">{row.adName||'Não informado'}<small className="block font-mono">{row.adId||'Sem ID'}</small></td>
+              <td className="p-2">{row.placement||'Não informado'}</td><td className="p-2">{row.visitors}</td><td className="p-2">{row.sessions}</td><td className="p-2">{row.pageViews}</td><td className="p-2">{row.clicks}</td>
+            </tr>)}
+          </tbody></table>{!(data.campaigns||[]).length&&<p className="py-4">Nenhum acesso registrado.</p>}</div>
+          <p className="text-xs text-[#66534B]">Atribuição: última origem identificada conservada por até 30 dias. Uma pessoa pode visitar por mais de uma campanha. Dados antigos sem parâmetros não permitem recuperar campanha, conjunto ou anúncio.</p>
+        </>}
+      </div>
+      {activeSubTab==='origens' && <div className="bg-white border border-[#E5DAD0] rounded-2xl p-5 overflow-x-auto">
+        <h3 className="font-bold mb-3">Páginas e tempo de atenção</h3>
+        <table className="w-full text-xs text-left"><thead><tr>{['Página','Visualizações','Visitantes','Tempo médio ativo'].map(label=><th key={label} className="p-2 border-b">{label}</th>)}</tr></thead><tbody>{(data.pages||[]).map(page=><tr key={page.path}><td className="p-2">{page.path}</td><td className="p-2">{page.views}</td><td className="p-2">{page.visitors}</td><td className="p-2">{page.avgSeconds}s</td></tr>)}</tbody></table>
+        <p className="text-xs mt-3 text-[#66534B]">Tempo com a página visível, atualizado a cada 30 segundos ou ao sair. Não é gravação de tela nem comprovação de leitura.</p>
+      </div>}
       {/* Primary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         

@@ -45,6 +45,10 @@ export interface StoredLead {
   trafficCampaign: string;
   trafficTerm?: string;
   trafficContent?: string;
+  attribution?: Record<string, string>;
+  geoConsent?: boolean;
+  locationSource?: string;
+  locationCapturedAt?: string;
   fbclid?: string;
   gclid?: string;
   referrer?: string;
@@ -337,6 +341,7 @@ export const AdminCRMPage: React.FC = () => {
       'Origem (utm_source)',
       'Mídia (utm_medium)',
       'Campanha (utm_campaign)',
+      'Campanha ID','Conjunto / grupo','Conjunto / grupo ID','Anúncio ID','Posicionamento',
       'Termo',
       'Conteúdo',
       'Meta Click ID (fbclid)',
@@ -358,6 +363,7 @@ export const AdminCRMPage: React.FC = () => {
       `"${l.trafficSource || ''}"`,
       `"${l.trafficMedium || ''}"`,
       `"${l.trafficCampaign || ''}"`,
+      ...[l.attribution?.campaignId,l.attribution?.adSet,l.attribution?.adSetId,l.attribution?.adId,l.attribution?.placement].map(v=>`"${(v||'').replace(/"/g,'""')}"`),
       `"${l.trafficTerm || ''}"`,
       `"${l.trafficContent || ''}"`,
       `"${l.fbclid || ''}"`,
@@ -1302,7 +1308,7 @@ export const AdminCRMPage: React.FC = () => {
                 {selectedLead.city && (
                   <span className="inline-flex items-center gap-1 text-xs text-[#8C7359] font-medium bg-[#FAF6F0] px-2 py-0.5 rounded-md border border-[#E5DAD0]">
                     <MapPin className="w-3 h-3 text-[#8C7359]" />
-                    {selectedLead.neighborhood || selectedLead.city}, {selectedLead.state || 'SP'}
+                    {selectedLead.neighborhood || selectedLead.city}, {selectedLead.state || 'Não informada'}
                   </span>
                 )}
               </div>
@@ -1373,16 +1379,16 @@ export const AdminCRMPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                   <div>
                     <span className="text-[#8C7359] block">Bairro:</span>
-                    <span className="font-bold text-[#1F1916]">{selectedLead.neighborhood || 'Jardins'}</span>
+                    <span className="font-bold text-[#1F1916]">{selectedLead.neighborhood || 'Não informada'}</span>
                   </div>
                   <div>
                     <span className="text-[#8C7359] block">Cidade / UF:</span>
-                    <span className="font-bold text-[#1F1916]">{selectedLead.city} - {selectedLead.state || 'SP'}</span>
+                    <span className="font-bold text-[#1F1916]">{selectedLead.city} - {selectedLead.state || 'Não informada'}</span>
                   </div>
                   <div>
                     <span className="text-[#8C7359] block">Coordenadas:</span>
                     <span className="font-mono text-[11px] text-[#66534B]">
-                      {selectedLead.latitude?.toFixed(4)}, {selectedLead.longitude?.toFixed(4)}
+                      {selectedLead.locationSource === 'browser_gps' ? `${selectedLead.latitude?.toFixed(4)}, ${selectedLead.longitude?.toFixed(4)}` : 'Não informada (sem GPS autorizado)'}
                     </span>
                   </div>
                 </div>
@@ -1439,6 +1445,15 @@ export const AdminCRMPage: React.FC = () => {
                   <span className="text-[#8C7359] font-medium block">Campanha (utm_campaign):</span>
                   <span className="font-mono text-[#1F1916]">{selectedLead.trafficCampaign || 'N/A'}</span>
                 </div>
+                {[
+                  ['Campanha ID',selectedLead.attribution?.campaignId],
+                  ['Conjunto / grupo',selectedLead.attribution?.adSet],
+                  ['Conjunto / grupo ID',selectedLead.attribution?.adSetId],
+                  ['Anúncio / criativo',selectedLead.attribution?.adName || selectedLead.trafficContent],
+                  ['Anúncio ID',selectedLead.attribution?.adId],
+                  ['Posicionamento',selectedLead.attribution?.placement],
+                  ['Palavra-chave',selectedLead.attribution?.keyword]
+                ].map(([label,value])=><div key={label}><span className="text-[#8C7359] font-medium block">{label}:</span><span className="font-mono text-[#1F1916] break-all">{value || 'Não informado'}</span></div>)}
                 {selectedLead.fbclid && (
                   <div className="sm:col-span-2">
                     <span className="text-[#1967D2] font-medium block">Meta Click ID (fbclid):</span>

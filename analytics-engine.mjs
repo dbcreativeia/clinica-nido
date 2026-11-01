@@ -1,3 +1,4 @@
+import { normalizeLocation, normalizeAttribution, parseContext } from './tracking-context.mjs';
 export async function initAnalyticsDatabase(pool) {
   if (!pool) throw new Error('Database pool unavailable');
   await pool.query(`
@@ -17,6 +18,8 @@ export async function initAnalyticsDatabase(pool) {
       traffic_source VARCHAR(100) DEFAULT 'direto',
       duration_seconds INT DEFAULT 0,
       is_preview BOOLEAN DEFAULT FALSE,
+      attribution_context JSON,
+      location_context JSON,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_event_type (event_type),
       INDEX idx_visitor_id (visitor_id),
@@ -25,6 +28,10 @@ export async function initAnalyticsDatabase(pool) {
       INDEX idx_created_at (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+  for (const column of ['attribution_context JSON NULL','location_context JSON NULL']) {
+    try { await pool.query(`ALTER TABLE nido_analytics_events ADD COLUMN ${column}`); }
+    catch (err) { if (err.code !== 'ER_DUP_FIELDNAME') throw err; }
+  }
 }
 
 export async function recordAnalyticsEvent(pool, event) {
@@ -55,13 +62,9 @@ export async function recordAnalyticsEvent(pool, event) {
   const eventName = event.name ? String(event.name).trim().slice(0, 100) : null;
   const eventLabel = event.label ? String(event.label).trim().slice(0, 255) : null;
 
-  const rawCity = String(event.city || '').trim();
-  const rawState = String(event.state || '').trim();
-  const rawNeighborhood = String(event.neighborhood || '').trim();
-
-  const city = (rawCity && rawCity !== 'undefined' && rawCity !== 'null') ? rawCity.slice(0, 100) : 'Não informada';
-  const state = (rawState && rawState !== 'undefined' && rawState !== 'null') ? rawState.slice(0, 50) : 'Não informada';
-  const neighborhood = (rawNeighborhood && rawNeighborhood !== 'undefined' && rawNeighborhood !== 'null') ? rawNeighborhood.slice(0, 100) : 'Não informada';
+  const location = normalizeLocation(event);
+  const {city,state,neighborhood} = location;
+  const attribution = normalizeAttribution(event.attribution || {});
 
   const trafficChannel = String(event.trafficChannel || 'Direto').trim().slice(0, 100);
   const trafficSource = String(event.trafficSource || 'direto').trim().slice(0, 100);
@@ -72,16 +75,17 @@ export async function recordAnalyticsEvent(pool, event) {
     INSERT INTO nido_analytics_events (
       event_id, visitor_id, session_id, event_type, event_name, event_label,
       page_path, city, state, neighborhood, traffic_channel, traffic_source,
-      duration_seconds, is_preview
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      duration_seconds, is_preview, attribution_context, location_context
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
-      duration_seconds = GREATEST(duration_seconds, VALUES(duration_seconds))
+      duration_seconds = GREATEST(duration_seconds, VALUES(duration_seconds)),
+      city=VALUES(city), state=VALUES(state), neighborhood=VALUES(neighborhood), location_context=VALUES(location_context)
   `;
 
   const [result] = await pool.query(query, [
     eventId, visitorId, sessionId, eventType, eventName, eventLabel,
     pagePath, city, state, neighborhood, trafficChannel, trafficSource,
-    durationSeconds, isPreview
+    durationSeconds, isPreview, JSON.stringify(attribution), JSON.stringify(location)
   ]);
 
   return { success: true, affectedRows: result.affectedRows, eventId };
@@ -154,7 +158,7 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
 
   // 3. Routes Stats (ONLY route_click events counted as route clicks, grouped by destination route/label)
   const [routeRows] = await pool.query(`
-    SELECT COALESCE(event_name, page_path) AS name, COALESCE(MAX(event_label), MAX(event_name), MAX(page_path)) AS label, COUNT(*) AS clicks
+    SELECT COALESCE(event_name, page_path) AS name, COALESCE(MAX(event_label), MAX(event_name), MAX(page_path)) AS label, COUNT(*) AS clicks, COUNT(DISTINCT visitor_id) AS routeVisitors
     FROM nido_analytics_events
     WHERE event_type = 'route_click' AND is_preview = FALSE
     GROUP BY COALESCE(event_name, page_path)
@@ -177,6 +181,7 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
     name: r.name,
     label: r.label || r.name,
     clicks: Number(r.clicks),
+    uniqueVisitors: Number(r.routeVisitors || 0),
     percentage: totalRouteClicks > 0 ? Math.round((Number(r.clicks) / totalRouteClicks) * 1000) / 10 : 0
   }]));
 
@@ -189,8 +194,10 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
 
   // 4. Treatments Stats (query treatment views and match leads)
   const [treatmentRows] = await pool.query(`
-    SELECT event_name AS name, COUNT(*) AS views, AVG(duration_seconds) AS avg_duration
-    FROM nido_analytics_events
+    SELECT t.event_name AS name, COUNT(*) AS views, AVG(p.avg_duration) AS avg_duration
+    FROM nido_analytics_events t
+    LEFT JOIN (SELECT page_path, AVG(duration_seconds) AS avg_duration FROM nido_analytics_events
+      WHERE event_type='page_view' AND is_preview=FALSE GROUP BY page_path) p ON p.page_path=t.page_path
     WHERE event_type = 'treatment_view' AND is_preview = FALSE AND event_name IS NOT NULL
     GROUP BY event_name
     ORDER BY views DESC
@@ -250,7 +257,7 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
   const topLocations = locRows.map(l => ({
     city: l.city,
     neighborhood: l.neighborhood || 'Geral',
-    state: l.state || 'SP',
+    state: l.state || 'Não informada',
     sessions: Number(l.sessions),
     percentage: totalLocSessions > 0 ? Math.round((Number(l.sessions) / totalLocSessions) * 1000) / 10 : 0
   }));
@@ -278,6 +285,30 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
       leads: matchedLeads
     };
   });
+
+  const [campaignRows] = await pool.query(`
+    SELECT traffic_channel AS channel,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.campaign')),'') AS campaign,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.campaignId')),'') AS campaignId,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.adSet')),'') AS adSet,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.adSetId')),'') AS adSetId,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.adName')),'') AS adName,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.adId')),'') AS adId,
+      COALESCE(JSON_UNQUOTE(JSON_EXTRACT(attribution_context,'$.placement')),'') AS placement,
+      COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions,
+      SUM(event_type='page_view') AS pageViews, SUM(event_type='cta_click') AS clicks
+    FROM nido_analytics_events WHERE is_preview=FALSE
+    GROUP BY traffic_channel,campaign,campaignId,adSet,adSetId,adName,adId,placement
+    ORDER BY visitors DESC LIMIT 200
+  `);
+  const campaigns = campaignRows.map(row=>({...row,visitors:Number(row.visitors),sessions:Number(row.sessions),pageViews:Number(row.pageViews),clicks:Number(row.clicks)}));
+  const [pageRows] = await pool.query(`
+    SELECT page_path AS path,COUNT(*) AS views,COUNT(DISTINCT visitor_id) AS visitors,
+      ROUND(AVG(duration_seconds)) AS avgSeconds
+    FROM nido_analytics_events WHERE event_type='page_view' AND is_preview=FALSE
+    GROUP BY page_path ORDER BY views DESC LIMIT 100
+  `);
+  const pages = pageRows.map(row=>({...row,views:Number(row.views),visitors:Number(row.visitors),avgSeconds:Number(row.avgSeconds)}));
 
   // 8. Recent Live Events
   const [liveRows] = await pool.query(`
@@ -308,6 +339,8 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
       qualifiedLeads,
       lostLeads
     },
+    campaigns,
+    pages,
     routes,
     treatments,
     ctaClicks,

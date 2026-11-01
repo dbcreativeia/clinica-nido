@@ -4,6 +4,7 @@
  */
 
 import { getOrCreateFbc, getOrCreateFbp, hasMetaConsent } from './metaConversions.ts';
+import { knownParameter } from '../../tracking-context.mjs';
 
 export type TrafficChannel = 
   | 'Google Ads'
@@ -24,6 +25,13 @@ export interface TrafficData {
   campaign: string;
   term?: string;
   content?: string;
+  campaignId?: string;
+  adSet?: string;
+  adSetId?: string;
+  adName?: string;
+  adId?: string;
+  placement?: string;
+  keyword?: string;
   fbclid?: string;
   gclid?: string;
   referrer: string;
@@ -77,7 +85,7 @@ export function initTrafficAttribution(): TrafficData {
   const utmContent = (urlParams.get('utm_content') || '').trim();
   const fbclid = (urlParams.get('fbclid') || '').trim();
   const gclid = (urlParams.get('gclid') || urlParams.get('gbraid') || urlParams.get('wbraid') || '').trim();
-  const referrer = document.referrer || '';
+  const referrer = typeof document !== 'undefined' ? document.referrer || '' : '';
   const landingPage = window.location.pathname + window.location.search;
 
   // Determine channel
@@ -85,7 +93,7 @@ export function initTrafficAttribution(): TrafficData {
   const lowerSource = utmSource.toLowerCase();
   const lowerMedium = utmMedium.toLowerCase();
   const lowerRef = referrer.toLowerCase();
-  const isPaidMedium = ['cpc', 'ppc', 'paid', 'ads', 'ad', 'sponsored', 'display'].includes(lowerMedium);
+  const isPaidMedium = ['cpc', 'ppc', 'paid', 'paid_social', 'paid-social', 'paid_search', 'ads', 'ad', 'sponsored', 'display'].includes(lowerMedium);
 
   // 1. Google Ads (click ID or Google with paid medium)
   if (gclid || (['google', 'adwords'].includes(lowerSource) && isPaidMedium)) {
@@ -93,15 +101,14 @@ export function initTrafficAttribution(): TrafficData {
   } 
   // 2. Google Orgânico (referrer from google or organic utm)
   else if (
-    (lowerRef.includes('google.') && !lowerRef.includes('googleads') && !gclid) ||
+    (!utmSource && lowerRef.includes('google.') && !lowerRef.includes('googleads') && !gclid) ||
     (lowerSource === 'google' && ['organic', 'organico', 'busca', 'search'].includes(lowerMedium))
   ) {
     channel = 'Google Orgânico';
   } 
   // 3. Meta Ads (fbclid or Meta sources with paid medium)
   else if (
-    fbclid || 
-    (['facebook', 'instagram', 'meta', 'fb', 'ig'].includes(lowerSource) && isPaidMedium)
+    (['facebook', 'instagram', 'meta', 'fb', 'ig', 'an', 'msg', 'th'].includes(lowerSource) && isPaidMedium)
   ) {
     channel = 'Meta Ads';
   } 
@@ -115,7 +122,7 @@ export function initTrafficAttribution(): TrafficData {
   } 
   // 5. Facebook Orgânico / Social
   else if (
-    lowerRef.includes('facebook.com') ||
+    fbclid || lowerRef.includes('facebook.com') ||
     lowerRef.includes('fb.me') ||
     lowerSource.includes('facebook') ||
     lowerSource === 'fb'
@@ -177,13 +184,16 @@ export function initTrafficAttribution(): TrafficData {
       channel === 'WhatsApp' ? 'messaging' :
       channel === 'Direto' ? 'none' : 'referral'
     ),
-    campaign: utmCampaign || (
-      channel === 'Google Ads' ? 'campanha_google_ads' :
-      channel === 'Meta Ads' ? 'campanha_meta_ads' :
-      'padrao'
-    ),
-    term: utmTerm || undefined,
-    content: utmContent || undefined,
+    campaign: knownParameter(utmCampaign),
+    campaignId: knownParameter(urlParams.get('campaign_id') || urlParams.get('utm_id')),
+    adSet: knownParameter(urlParams.get('adset_name') || urlParams.get('adgroup_name') || (channel === 'Meta Ads' ? utmTerm : '')),
+    adSetId: knownParameter(urlParams.get('adset_id') || urlParams.get('adgroup_id')),
+    adName: knownParameter(urlParams.get('ad_name') || utmContent),
+    adId: knownParameter(urlParams.get('ad_id') || urlParams.get('creative_id')),
+    placement: knownParameter(urlParams.get('placement')),
+    keyword: channel === 'Google Ads' ? knownParameter(utmTerm) : '',
+    term: knownParameter(utmTerm) || undefined,
+    content: knownParameter(utmContent) || undefined,
     fbclid: fbclid || undefined,
     gclid: gclid || undefined,
     referrer,
@@ -209,7 +219,11 @@ export function getStoredTrafficAttribution(): TrafficData | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      const age = Date.now() - Date.parse(parsed.capturedAt);
+      if (!Number.isFinite(age) || age < 0 || age > 30 * 86400000) return null;
+      if (['padrao','campanha_google_ads','campanha_meta_ads'].includes(parsed.campaign)) parsed.campaign = '';
+      return parsed;
     }
   } catch {
     // fallback

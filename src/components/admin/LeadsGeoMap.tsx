@@ -33,7 +33,7 @@ export const LeadsGeoMap: React.FC<LeadsGeoMapProps> = ({ leads, onSelectLead })
   const filteredMapLeads = useMemo(() => {
     return leads.filter((l) => {
       // Must have valid coordinates
-      if (!l.latitude || !l.longitude) return false;
+      if (l.locationSource !== 'browser_gps' || l.geoConsent !== true || !Number.isFinite(l.latitude) || !Number.isFinite(l.longitude)) return false;
 
       if (statusFilter === 'todos') return true;
       if (statusFilter === 'qualificados') {
@@ -45,14 +45,15 @@ export const LeadsGeoMap: React.FC<LeadsGeoMapProps> = ({ leads, onSelectLead })
 
   // Statistics for map
   const stats = useMemo(() => {
-    const totalWithGeo = leads.filter((l) => l.latitude && l.longitude).length;
-    const qualified = leads.filter((l) => (l.status === 'agendado' || l.status === 'convertido') && l.latitude).length;
-    const lost = leads.filter((l) => l.status === 'perdido' && l.latitude).length;
-    const inContact = leads.filter((l) => l.status === 'em_contato' && l.latitude).length;
-    const newLeads = leads.filter((l) => l.status === 'novo' && l.latitude).length;
+    const verified = leads.filter((l) => l.locationSource === 'browser_gps' && l.geoConsent === true && Number.isFinite(l.latitude) && Number.isFinite(l.longitude));
+    const totalWithGeo = verified.length;
+    const qualified = verified.filter((l) => (l.status === 'agendado' || l.status === 'convertido')).length;
+    const lost = verified.filter((l) => l.status === 'perdido').length;
+    const inContact = verified.filter((l) => l.status === 'em_contato').length;
+    const newLeads = verified.filter((l) => l.status === 'novo').length;
     
     // Unique cities
-    const cities = new Set(leads.map((l) => l.city).filter(Boolean)).size;
+    const cities = new Set(verified.map((l) => l.city).filter(city=>city && city !== 'Não informada')).size;
 
     return { totalWithGeo, qualified, lost, inContact, newLeads, cities };
   }, [leads]);
