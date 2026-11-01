@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "crm:diagnose": "node scripts/crm-diagnose.cjs"
+    "crm:diagnose": "node scripts/crm-diagnose.cjs",
+    "crm:restart": "node scripts/crm-restart.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
