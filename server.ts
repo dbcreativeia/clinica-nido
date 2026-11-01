@@ -754,7 +754,7 @@ async function startServer() {
 
   const kommoRepo = {
     list: readLeads,
-    apply: async (id: string, k: any, status: string) => createKommoRepository(requireLeadDatabase(), readLeads).apply(id,k,status),
+    apply: async (id: string, k: any, status: string, options: any = {}) => createKommoRepository(requireLeadDatabase(), readLeads).apply(id,k,status,options),
     remove: async (id: string) => createKommoRepository(requireLeadDatabase(), readLeads).remove(id)
   };
   async function kommoRequest(resource: string): Promise<any> {

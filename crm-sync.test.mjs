@@ -7,9 +7,12 @@ function fixture(leads, remote, contacts = []) {
   const calls = [];
   const repo = {
     list: async () => [...rows.values()].filter(l => !l.deletedAt).map(l => ({...l})),
-    apply: async (id, k, status) => {
+    apply: async (id, k, status, options={}) => {
       const l = rows.get(id);
-      if (!l || l.deletedAt || (l.kommoLeadId && String(l.kommoLeadId) !== String(k.id)) || (l.kommoUpdatedAt || 0) > k.updated_at) return false;
+      if (!l || l.deletedAt) return false;
+      if(options.rebind) {
+        if(String(l.kommoLeadId)!==String(options.expectedKommoId) || Number(l.kommoUpdatedAt || 0)!==Number(options.expectedUpdatedAt)) return false;
+      } else if((l.kommoLeadId && String(l.kommoLeadId)!==String(k.id)) || (l.kommoUpdatedAt || 0)>k.updated_at) return false;
       Object.assign(l, {status, kommoLeadId:String(k.id), kommoUpdatedAt:k.updated_at});
       return true;
     },
@@ -86,4 +89,70 @@ test('webhook recovers unique unbound lead using full phone and numeric status',
   const f=fixture([{id:'a',phone:'11987933438',status:'novo'}],{'9':remote},[contact]);
   await receiveKommoWebhook({...f,payload:{leads:{status:[{id:'9',status_id:105149587}]}}});
   assert.equal(f.rows.get('a').status,'agendado');
+});
+
+function duplicateChannelFixture() {
+  const createdAt='2026-11-01T01:52:55.000Z';
+  const original={...k(11103500),pipeline_id:14653579,status_id:113223651,created_at:1793497976};
+  const chat={...k(11103518),created_at:1793498098,updated_at:1793498220,_embedded:{contacts:[{id:1}]}};
+  const contact={id:1,custom_fields_values:[{field_code:'PHONE',values:[{value:'5511987933438'}]}],_embedded:{leads:[{id:11103518}]}};
+  return fixture([{id:'a',phone:'11987933438',kommoLeadId:'11103500',kommoUpdatedAt:0,createdAt,status:'novo'}],{'11103500':original,'11103518':chat},[contact]);
+}
+test('manual sync recovers the unique new WhatsApp lead when original is in another pipeline',async()=>{
+  const f=duplicateChannelFixture();
+  await synchronizeKommo(f);
+  assert.equal(f.rows.get('a').status,'agendado');
+  assert.equal(f.rows.get('a').kommoLeadId,'11103518');
+});
+test('status webhook recovers linked site lead from an unrelated pipeline',async()=>{
+  const f=duplicateChannelFixture();
+  await receiveKommoWebhook({...f,payload:{leads:{status:[{id:11103518}]}}});
+  assert.equal(f.rows.get('a').status,'agendado');
+});
+test('recovery does not attach historical treatment from before the new site contact',async()=>{
+  const f=duplicateChannelFixture();
+  const request=f.request;
+  f.request=async path=>{const value=await request(path);return path.startsWith('leads/11103518')?{...value,created_at:1793400000}:value};
+  await synchronizeKommo(f);
+  assert.equal(f.rows.get('a').status,'novo');
+});
+test('recovery cannot replace a different link assigned while remote API is pending',async()=>{
+  const f=duplicateChannelFixture();
+  const request=f.request;
+  f.request=async path=>{const value=await request(path);if(path.startsWith('contacts?')) f.rows.get('a').kommoLeadId='777';return value};
+  await synchronizeKommo(f);
+  assert.equal(f.rows.get('a').kommoLeadId,'777');
+  assert.equal(f.rows.get('a').status,'novo');
+});
+
+test('recovery never replaces a deleted original lead with another conversation',async()=>{
+  const f=duplicateChannelFixture(); const read=f.request;
+  f.request=async p=>{const value=await read(p);return p.startsWith('leads/11103500')?{...value,is_deleted:true}:value};
+  await synchronizeKommo(f); assert.equal(f.rows.get('a').deletedAt,true);
+  assert.equal(f.rows.get('a').kommoLeadId,'11103500');
+});
+test('a valid linked treatment is never replaced by a different conversation',async()=>{
+  const f=duplicateChannelFixture(); const read=f.request;
+  f.request=async p=>p.startsWith('leads/11103500')?k(11103500,105149575):read(p);
+  await synchronizeKommo(f); assert.equal(f.rows.get('a').kommoLeadId,'11103500');
+  assert.equal(f.rows.get('a').status,'em_contato');
+});
+test('multiple new treatment candidates leave the previous link untouched',async()=>{
+  const f=duplicateChannelFixture(); const read=f.request;
+  f.request=async p=>{
+    if(p.startsWith('leads/11103520')) return {...k(11103520),created_at:1793498100};
+    const value=await read(p);
+    if(p.startsWith('contacts?')) return {_embedded:{contacts:[{...value._embedded.contacts[0],_embedded:{leads:[{id:11103518},{id:11103520}]}}]}};
+    return value;
+  };
+  const result=await synchronizeKommo(f);
+  assert.equal(f.rows.get('a').kommoLeadId,'11103500'); assert.equal(result.ambiguousCount,1);
+});
+test('SQL rebind compares the original link and version and excludes soft-deleted rows',async()=>{
+  const {createKommoRepository}=await import('./crm-sync.mjs');
+  let statement,params;
+  const repo=createKommoRepository({query:async(sql,args)=>{statement=sql;params=args;return [{affectedRows:1}]}},async()=>[]);
+  assert.equal(await repo.apply('a',{...k(11103518),updated_at:30},'agendado',{rebind:true,expectedKommoId:'11103500',expectedUpdatedAt:20}),true);
+  assert.match(statement,/deleted_at IS NULL AND kommo_lead_id=\? AND COALESCE\(kommo_updated_at,0\)=\?/);
+  assert.deepEqual(params,['agendado','11103518','105149587',30,'a','11103500',20]);
 });

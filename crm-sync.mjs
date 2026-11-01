@@ -1,4 +1,4 @@
-export const CRM_VERSION = 'nido-crm-sync-v2';
+export const CRM_VERSION = 'nido-crm-sync-v3';
 const ALLOWED = new Set([13625351,14680687]);
 const STATES = new Map([
   [105149571,'novo'],[105149575,'em_contato'],[105149579,'em_contato'],[105149583,'em_contato'],
@@ -18,7 +18,7 @@ function eligible(k) {return k && ALLOWED.has(Number(k.pipeline_id)) && !truth(k
 // Pure orchestration. Only repository.apply/remove can change existing site records.
 export async function synchronizeKommo({repo,request,remoteIds = undefined}) {
   const leads=await repo.list();
-  const report={version:CRM_VERSION,storage:'mysql',fetchedCount:0,matchedCount:0,updatedCount:0,unmatchedCount:0,unknownStatusCount:0,missingRemoteCount:0,ambiguousCount:0};
+  const report={version:CRM_VERSION,storage:'mysql',fetchedCount:0,matchedCount:0,updatedCount:0,unmatchedCount:0,unknownStatusCount:0,missingRemoteCount:0,ambiguousCount:0,reboundCount:0,outOfScopeCount:0};
   const cache=new Map();
   async function getLead(id) {
     const key=String(id);
@@ -28,18 +28,29 @@ export async function synchronizeKommo({repo,request,remoteIds = undefined}) {
     }
     return cache.get(key);
   }
-  async function apply(local,k) {
+  async function apply(local,k,rebind=false) {
     if (!k) {report.missingRemoteCount++;return;}
-    if (String(k.id)!==String(local.kommoLeadId || k.id)) return;
+    if (!rebind && String(k.id)!==String(local.kommoLeadId || k.id)) return;
     if (truth(k.is_deleted)) {await repo.remove(local.id);return;}
     if (!eligible(k)) return;
     const status=STATES.get(Number(k.status_id));
     if (!status) {report.unknownStatusCount++;return;}
     if (!Number.isFinite(Number(k.updated_at)) || Number(k.updated_at)<=0) throw new Error('Kommo returned an invalid update timestamp');
     report.matchedCount++;
-    if (await repo.apply(local.id,k,status)) report.updatedCount++;
+    if (await repo.apply(local.id,k,status,{rebind,expectedKommoId:local.kommoLeadId || '',expectedUpdatedAt:Number(local.kommoUpdatedAt || 0)})) {
+      report.updatedCount++;
+      if(rebind) report.reboundCount++;
+    }
   }
   async function recover(local, requiredId) {
+    const rebind=Boolean(local.kommoLeadId);
+    if(rebind) {
+      const previous=await getLead(local.kommoLeadId);
+      // Only repair an existing, live link outside the supported treatment funnels.
+      // A missing/deleted entity is never silently replaced with another treatment.
+      if(!previous || truth(previous.is_deleted) || ALLOWED.has(Number(previous.pipeline_id))) return;
+    }
+    const createdAt=Date.parse(local.createdAt || '')/1000;
     const phone=normalizedPhone(local.phone);
     if(!phone || leads.filter(l=>normalizedPhone(l.phone)===phone).length!==1) {report.ambiguousCount++;return;}
     const candidates=new Map();
@@ -51,7 +62,7 @@ export async function synchronizeKommo({repo,request,remoteIds = undefined}) {
         if(!phones.includes(phone)) continue;
         for(const ref of contact._embedded?.leads || []) {
           const k=await getLead(ref.id);
-          if(eligible(k) && !leads.some(l=>l.kommoLeadId && String(l.kommoLeadId)===String(k.id))) candidates.set(String(k.id),k);
+          if(eligible(k) && (!Number.isFinite(createdAt) || Number(k.created_at)>=createdAt-60) && !leads.some(l=>l.kommoLeadId && String(l.kommoLeadId)===String(k.id))) candidates.set(String(k.id),k);
         }
       }
       if(!data?._links?.next) break;
@@ -59,7 +70,7 @@ export async function synchronizeKommo({repo,request,remoteIds = undefined}) {
     }
     if(candidates.size===1) {
       const candidate=[...candidates.values()][0];
-      if(!requiredId || String(candidate.id)===requiredId) await apply(local,candidate);
+      if(!requiredId || String(candidate.id)===requiredId) await apply(local,candidate,rebind);
     } else if(candidates.size>1) report.ambiguousCount++;
     else report.unmatchedCount++;
   }
@@ -77,11 +88,17 @@ export async function synchronizeKommo({repo,request,remoteIds = undefined}) {
             for(const value of field.values || []) {const phone=normalizedPhone(value.value);if(phone) eventPhones.add(phone);}
           }
         }
-        for(const candidate of leads.filter(l=>!l.kommoLeadId && eventPhones.has(normalizedPhone(l.phone)))) await recover(candidate,id);
+        for(const candidate of leads.filter(l=>eventPhones.has(normalizedPhone(l.phone)))) await recover(candidate,id);
       }
     }
   } else {
-    for(const l of leads.filter(l=>l.kommoLeadId)) await apply(l,await getLead(l.kommoLeadId));
+    for(const l of leads.filter(l=>l.kommoLeadId)) {
+      const remote=await getLead(l.kommoLeadId);
+      if(remote && !truth(remote.is_deleted) && !ALLOWED.has(Number(remote.pipeline_id))) {
+        report.outOfScopeCount++;
+        await recover(l);
+      } else await apply(l,remote);
+    }
     for(const local of leads.filter(l=>!l.kommoLeadId)) {
       await recover(local);
     }
@@ -108,7 +125,12 @@ export function createKommoRepository(pool,list) {
   if(!pool) throw new Error('MySQL unavailable');
   return {
     list,
-    async apply(id,k,status) {
+    async apply(id,k,status,options={}) {
+      if(options.rebind) {
+        const [result]=await pool.query(`UPDATE nido_leads SET status=?, kommo_lead_id=?, kommo_status_id=?, kommo_updated_at=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL AND kommo_lead_id=? AND COALESCE(kommo_updated_at,0)=?`,
+          [status,String(k.id),String(k.status_id),Number(k.updated_at),id,String(options.expectedKommoId),Number(options.expectedUpdatedAt)]);
+        return result.affectedRows>0;
+      }
       const [result]=await pool.query(`UPDATE nido_leads SET status=?, kommo_lead_id=?, kommo_status_id=?, kommo_updated_at=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL AND (kommo_lead_id IS NULL OR kommo_lead_id='' OR kommo_lead_id=?) AND COALESCE(kommo_updated_at,0)<=?`,
         [status,String(k.id),String(k.status_id),Number(k.updated_at),id,String(k.id),Number(k.updated_at)]);
       return result.affectedRows>0;
