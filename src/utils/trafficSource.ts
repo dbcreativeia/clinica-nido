@@ -3,7 +3,7 @@
  * Captures UTM parameters, click IDs (gclid, fbclid), and referrers to accurately attribute lead origins.
  */
 
-import { getOrCreateFbc, getOrCreateFbp } from './metaConversions';
+import { getOrCreateFbc, getOrCreateFbp, hasMetaConsent } from './metaConversions';
 
 export type TrafficChannel = 
   | 'Google Ads'
@@ -49,9 +49,22 @@ export function initTrafficAttribution(): TrafficData {
     };
   }
 
-  // Resolve and preserve Meta _fbp and _fbc cookies immediately upon visit
-  getOrCreateFbp();
-  getOrCreateFbc();
+  // Resolve and preserve Meta _fbp and _fbc cookies only if marketing consent is valid
+  const consentSetting = localStorage.getItem('nido_cookie_consent');
+  let hasMetaConsent = false;
+  if (consentSetting) {
+    try {
+      const parsed = JSON.parse(consentSetting);
+      if (parsed.meta === true && (!parsed.expiresAt || Date.now() <= parsed.expiresAt)) {
+        hasMetaConsent = true;
+      }
+    } catch {}
+  }
+
+  if (hasMetaConsent) {
+    getOrCreateFbp();
+    getOrCreateFbc();
+  }
 
   // Check if we already have first-touch attribution saved
   const existing = getStoredTrafficAttribution();

@@ -7,6 +7,7 @@ import { promises as fsp } from 'fs';
 import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
+import { sendMetaConversionEvent } from './meta-capi.mjs';
 
 dotenv.config();
 
@@ -242,12 +243,16 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // Meta Conversions API Status / Health Check
-  app.get('/api/meta/status', (_req: Request, res: Response) => {
+  app.get('/api/meta/status', (req: Request, res: Response) => {
+    const isProdEnv = process.env.NODE_ENV === 'production';
+    const testModeActive = !isProdEnv && process.env.META_FORCE_TEST_MODE === 'true' && Boolean(TEST_EVENT_CODE);
     res.json({
+      version: 'nido-meta-v2',
       status: 'active',
       pixelId: PIXEL_ID,
       tokenConfigured: Boolean(CAPI_TOKEN),
       testCodeConfigured: Boolean(TEST_EVENT_CODE),
+      testModeActive,
       productionDomains: PRODUCTION_DOMAINS,
       timestamp: new Date().toISOString()
     });
@@ -259,6 +264,8 @@ async function startServer() {
       const {
         eventName,
         eventId,
+        eventTime,
+        marketingConsent,
         eventSourceUrl,
         customData = {},
         userData = {},
@@ -270,6 +277,10 @@ async function startServer() {
         return res.status(400).json({ error: 'eventName is required' });
       }
 
+      if(marketingConsent!==true) return res.status(400).json({success:false,error:'Marketing consent required'});
+      if(typeof eventName!=='string' || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(eventName) || typeof eventId!=='string' || !/^nido_[a-z0-9_]{1,150}$/.test(eventId)) return res.status(400).json({success:false,error:'Invalid event identifiers'});
+      const eventSeconds=Number(eventTime);
+      if(!Number.isInteger(eventSeconds) || eventSeconds<Math.floor(Date.now()/1000)-86400 || eventSeconds>Math.floor(Date.now()/1000)+60) return res.status(400).json({success:false,error:'Invalid event time'});
       const clientIp = extractRealClientIp(req);
       const clientUserAgent = (req.headers['user-agent'] as string) || '';
 
@@ -290,13 +301,14 @@ async function startServer() {
       const fbc = userData.fbc || cookies['_fbc'] || undefined;
 
       // Normalization and SHA-256 for PII
-      const normalizedEm = userData.em ? hashSha256(userData.em.trim().toLowerCase()) : undefined;
+      const normalizedEm = userData.em && !String(userData.em).toLowerCase().endsWith('@nido.local') ? hashSha256(userData.em.trim().toLowerCase()) : undefined;
       const normalizedPh = userData.ph ? hashSha256(normalizePhone(userData.ph)) : undefined;
       const normalizedFn = userData.fn ? hashSha256(normalizeText(userData.fn)) : undefined;
       const normalizedLn = userData.ln ? hashSha256(normalizeText(userData.ln)) : undefined;
       const normalizedCt = userData.ct ? hashSha256(normalizeText(userData.ct)) : undefined;
       const normalizedSt = userData.st ? hashSha256(userData.st.trim().toLowerCase()) : undefined;
       const normalizedCountry = hashSha256(userData.country ? userData.country.trim().toLowerCase() : 'br');
+      const normalizedZip = userData.zp ? hashSha256(String(userData.zp).replace(/\D/g,'')) : undefined;
       const normalizedExternalId = userData.external_id ? hashSha256(userData.external_id.trim()) : undefined;
 
       const rawEventSourceUrl = eventSourceUrl || req.headers.referer || 'https://www.nidoestetica.com.br/';
@@ -304,30 +316,11 @@ async function startServer() {
 
       const finalEventId = eventId || `nido_${eventName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-      // Backend Idempotency check: composite key = PIXEL_ID:eventName:eventId
-      const dedupeKey = `${PIXEL_ID}:${eventName}:${finalEventId}`;
-      if (isEventDuplicate(dedupeKey)) {
-        return res.json({
-          success: true,
-          deduplicated: true,
-          message: 'Event was already received and processed (idempotent)',
-          eventId: finalEventId
-        });
-      }
-
-      // Safe Custom Data: healthcare compliance, no clinical text
-      const sanitizedCustomData: Record<string, unknown> = {
-        currency: 'BRL',
-        content_type: 'product',
-        ...customData
-      };
-      if (!sanitizedCustomData.content_category) {
-        sanitizedCustomData.content_category = 'Atendimento e Consulta';
-      }
+      const sanitizedCustomData={currency:'BRL',content_name:'Informações institucionais',content_category:'Site'};
 
       const eventPayload: Record<string, unknown> = {
         event_name: eventName,
-        event_time: Math.floor(Date.now() / 1000),
+        event_time: eventSeconds,
         event_id: finalEventId,
         event_source_url: cleanEventSourceUrl,
         action_source: 'website',
@@ -342,69 +335,53 @@ async function startServer() {
           ...(normalizedLn ? { ln: normalizedLn } : {}),
           ...(normalizedCt ? { ct: normalizedCt } : {}),
           ...(normalizedSt ? { st: normalizedSt } : {}),
+          ...(normalizedZip ? { zp: normalizedZip } : {}),
           ...(normalizedCountry ? { country: normalizedCountry } : {}),
           ...(normalizedExternalId ? { external_id: normalizedExternalId } : {})
         },
         custom_data: sanitizedCustomData
       };
 
-      const effectiveTestCode = testEventCode || TEST_EVENT_CODE || undefined;
+      const officialRequest=PRODUCTION_DOMAINS.includes(req.hostname.toLowerCase()) && isProductionUrl(cleanEventSourceUrl);
+      const liveMode=process.env.NODE_ENV==='production' && officialRequest;
+      const effectiveTestCode=process.env.NODE_ENV!=='production' && process.env.META_FORCE_TEST_MODE==='true' ? TEST_EVENT_CODE || undefined : undefined;
+      if(!liveMode && !effectiveTestCode) return res.json({success:true,dev_mode:true,eventId:finalEventId});
 
-      // Environment separation:
-      // If client is not on production domain and no test code is configured, suppress live Meta transmission
-      const isProd = isProductionUrl(cleanEventSourceUrl) || isProductionClient === true;
-      if (!isProd && !effectiveTestCode) {
-        return res.json({
-          success: true,
-          dev_mode: true,
-          message: 'Event acknowledged in development/preview mode; live Meta dataset protected.',
-          eventId: finalEventId
-        });
-      }
-
-      // If token not configured, simulate success locally
+      // If token not configured, return 503 and success false
       if (!CAPI_TOKEN) {
-        return res.json({
-          success: true,
-          simulated: true,
-          message: 'Meta Conversions API token not configured; event accepted locally',
-          eventId: finalEventId
+        return res.status(503).json({
+          success: false,
+          error: 'CAPI token not configured'
         });
       }
 
       const requestBody: Record<string, unknown> = {
         data: [eventPayload]
       };
+
       if (effectiveTestCode) {
         requestBody.test_event_code = effectiveTestCode;
       }
 
-      const metaUrl = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${CAPI_TOKEN}`;
-
-      const metaRes = await fetch(metaUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
+      const capiRes = await sendMetaConversionEvent(requestBody, {
+        token: CAPI_TOKEN,
+        pixelId: PIXEL_ID,
+        maxRetries: 3
       });
 
-      const metaData = await metaRes.json() as Record<string, unknown>;
-
-      if (!metaRes.ok) {
-        const errorObj = (metaData.error as Record<string, unknown>) || {};
-        return res.json({
+      if (!capiRes.success) {
+        return res.status(capiRes.status===400?400:503).json({
           success: false,
-          warning: typeof errorObj.message === 'string' ? errorObj.message : 'Meta CAPI request rejected',
-          type: typeof errorObj.type === 'string' ? errorObj.type : undefined,
+          warning: capiRes.error || 'Meta CAPI request rejected',
+          status: capiRes.status,
           eventId: finalEventId
         });
       }
 
       return res.json({
         success: true,
-        events_received: metaData.events_received,
-        fbtrace_id: metaData.fbtrace_id,
+        events_received: capiRes.events_received,
+        fbtrace_id: capiRes.fbtrace_id,
         eventId: finalEventId,
         test_mode: Boolean(effectiveTestCode)
       });

@@ -23,13 +23,42 @@ export function isProductionDomain(): boolean {
   return PRODUCTION_DOMAINS.includes(hostname);
 }
 
+export function hasMetaConsent(): boolean {
+  try {
+    const c=JSON.parse(localStorage.getItem('nido_cookie_consent') || 'null');
+    const age=Date.now()-c?.timestamp;
+    return c?.meta===true && typeof c.timestamp==='number' && age>=0 && age<180*86400000 && (!c.expiresAt || c.expiresAt>Date.now());
+  } catch { return false; }
+}
+let pixelInitialized=false;
+function initializePixel(userData: MetaUserData): void {
+  if(!isProductionDomain() || !hasMetaConsent()) return;
+  if(!window.fbq) {
+    const q:any=function(...args:unknown[]){if(q.callMethod)q.callMethod(...args);else q.queue.push(args)};
+    q.queue=[];q.push=q;q.loaded=true;q.version='2.0';window.fbq=q;window._fbq=q;
+    const script=document.createElement('script');script.async=true;script.src='https://connect.facebook.net/en_US/fbevents.js';
+    document.head.appendChild(script);
+  }
+  window.fbq?.('consent','grant');
+  if(!pixelInitialized) {
+    const matching:Record<string,string>={};
+    for(const key of ['em','ph','fn','ln','country'] as const) if(userData[key])matching[key]=userData[key]!;
+    window.fbq?.('init',META_PIXEL_ID,matching);pixelInitialized=true;
+  }
+  // Later form identifiers enrich CAPI. Pixel automatic matching remains enabled.
+  // Do not use undocumented update commands or repeatedly initialize the same pixel.
+}
+export function refreshMetaConsent(): void {
+  if(!hasMetaConsent()) window.fbq?.('consent','revoke');
+}
+
 /**
  * Helper to read cookie values by name
  */
 export function getCookie(name: string): string | undefined {
   if (typeof document === 'undefined') return undefined;
-  const match = document.cookie.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'));
-  return match ? decodeURIComponent(match[3]) : undefined;
+  const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 /**
@@ -46,7 +75,8 @@ export function setCookie(name: string, value: string, days = 90): void {
   if (hostname.endsWith('nidoestetica.com.br')) {
     domain = '; domain=.nidoestetica.com.br';
   }
-  document.cookie = `${name}=${encodeURIComponent(value)}${expires}; path=/${domain}; SameSite=Lax`;
+  const isSecure = window.location.protocol === 'https:';
+  document.cookie = `${name}=${encodeURIComponent(value)}${expires}; path=/${domain}; SameSite=Lax${isSecure ? '; Secure' : ''}`;
 }
 
 /**
@@ -55,7 +85,7 @@ export function setCookie(name: string, value: string, days = 90): void {
  * and sets it in both document.cookie (90 days) and localStorage.
  */
 export function getOrCreateFbp(): string {
-  if (typeof window === 'undefined') return '';
+  if (typeof window === 'undefined' || !hasMetaConsent() || !isProductionDomain()) return '';
 
   // 1. Check existing cookie
   const existingCookie = getCookie('_fbp');
@@ -94,43 +124,58 @@ export function getOrCreateFbp(): string {
  * Does NOT manufacture fbclid on organic or direct visits.
  */
 export function getOrCreateFbc(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
+  if (typeof window === 'undefined' || !hasMetaConsent() || !isProductionDomain()) return undefined;
 
-  // 1. Check existing cookie
+  let urlFbclid: string | null = null;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const param = urlParams.get('fbclid');
+    if (param && param.trim()) {
+      urlFbclid = param.trim();
+    }
+  } catch {
+    // Ignore
+  }
+
   const existingCookie = getCookie('_fbc');
+  let existingLocalStorage: string | null = null;
+  try {
+    existingLocalStorage = localStorage.getItem('nido_fbc');
+  } catch {
+    // Ignore
+  }
+
+  // If new fbclid is present in URL
+  if (urlFbclid) {
+    const existingFbc = existingCookie || existingLocalStorage;
+    if (existingFbc && existingFbc.startsWith('fb.1.')) {
+      const parts = existingFbc.split('.');
+      const storedFbclid = parts.slice(3).join('.');
+      if (storedFbclid === urlFbclid) {
+        return existingFbc;
+      }
+    }
+    // New fbclid detected: create new fbc
+    const creationTime = Date.now();
+    const fbc = `fb.1.${creationTime}.${urlFbclid}`;
+    setCookie('_fbc', fbc, 90);
+    try {
+      localStorage.setItem('nido_fbc', fbc);
+    } catch {
+      // Ignore
+    }
+    return fbc;
+  }
+
+  // No URL fbclid: check existing cookie
   if (existingCookie && existingCookie.startsWith('fb.1.')) {
     return existingCookie;
   }
 
-  // 2. Check current URL query parameter
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const fbclid = urlParams.get('fbclid');
-    if (fbclid && fbclid.trim()) {
-      const cleanFbclid = fbclid.trim();
-      const creationTime = Date.now();
-      const fbc = `fb.1.${creationTime}.${cleanFbclid}`;
-      setCookie('_fbc', fbc, 90);
-      try {
-        localStorage.setItem('nido_fbc', fbc);
-      } catch {
-        // Ignore
-      }
-      return fbc;
-    }
-  } catch {
-    // Ignore URL parse error
-  }
-
-  // 3. Check localStorage fallback (for intra-session navigation after redirect)
-  try {
-    const saved = localStorage.getItem('nido_fbc');
-    if (saved && saved.startsWith('fb.1.')) {
-      setCookie('_fbc', saved, 90);
-      return saved;
-    }
-  } catch {
-    // Ignore
+  // Check localStorage fallback
+  if (existingLocalStorage && existingLocalStorage.startsWith('fb.1.')) {
+    setCookie('_fbc', existingLocalStorage, 90);
+    return existingLocalStorage;
   }
 
   return undefined;
@@ -205,22 +250,7 @@ export async function trackMetaEvent(
   eventName: 'PageView' | 'Lead' | 'Contact' | 'ViewContent' | 'Search' | string,
   options: MetaEventOptions = {}
 ): Promise<string> {
-  // 1. Respect LGPD user cookie consent
-  if (typeof window !== 'undefined') {
-    const consentSetting = localStorage.getItem('nido_cookie_consent');
-    if (consentSetting) {
-      try {
-        const parsed = JSON.parse(consentSetting);
-        if (parsed.meta === false) {
-          // User explicitly declined marketing cookies
-          return options.eventId || generateEventId(eventName);
-        }
-      } catch {
-        // Ignore JSON error
-      }
-    }
-  }
-
+  if(typeof window==='undefined' || !isProductionDomain() || !hasMetaConsent()) return options.eventId || generateEventId(eventName);
   // 2. Prevent accidental micro-duplicate triggers
   const eventId = options.eventId || generateEventId(eventName);
   const dedupeKey = `${eventName}_${window?.location?.pathname || '/'}`;
@@ -239,67 +269,33 @@ export async function trackMetaEvent(
   const resolvedFbc = options.userData?.fbc || getOrCreateFbc();
 
   const finalUserData: MetaUserData = {
-    ...options.userData,
-    ...(resolvedFbp ? { fbp: resolvedFbp } : {}),
-    ...(resolvedFbc ? { fbc: resolvedFbc } : {})
+    ...(resolvedFbp ? {fbp:resolvedFbp}:{}), ...(resolvedFbc ? {fbc:resolvedFbc}:{})
   };
-
-  // 4. Clean customData to comply with Healthcare Privacy:
-  // Disallow clinical free text, health diagnoses, or sensitive personal data.
-  const rawCustom = options.customData || {};
-  const sanitizedCustomData: Record<string, unknown> = {
-    content_type: 'product',
-    currency: 'BRL',
-    ...rawCustom
-  };
-
-  // Ensure content category is professional and non-diagnostic
-  if (!sanitizedCustomData.content_category) {
-    sanitizedCustomData.content_category = 'Estética Avançada';
+  const supplied=options.userData || {};
+  for(const key of ['em','ph','fn','ln','ct','st','zp','country','external_id'] as const) {
+    let value=String(supplied[key] || '').trim().toLowerCase();
+    if(key==='em' && (!value.includes('@') || value.endsWith('@nido.local'))) value='';
+    if(key==='ph') {value=value.replace(/\D/g,'');if(value.length===10 || value.length===11)value='55'+value;if(!/^55\d{10,11}$/.test(value))value='';}
+    if(value)finalUserData[key]=value;
   }
-
-  const isProd = isProductionDomain();
-  const testCode = options.testEventCode || (typeof window !== 'undefined' ? window.__META_TEST_EVENT_CODE__ : undefined);
-
-  // 5. Client-Side Meta Pixel Dispatch
-  // In development / non-production hosts, only dispatch if test mode code is present to protect the live production dataset
-  if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
-    if (isProd || testCode) {
-      try {
-        window.fbq('track', eventName, sanitizedCustomData, { eventID: eventId });
-      } catch (err) {
-        console.warn('[Meta Pixel Client Warning]', err);
-      }
-    }
-  }
-
-  // 6. Server-Side Conversions API (CAPI) Dispatch
-  if (typeof window !== 'undefined') {
+  const sanitizedCustomData={content_name:'Informações institucionais',content_category:'Site',currency:'BRL'};
+  initializePixel(finalUserData);
+  window.fbq?.('track',eventName,sanitizedCustomData,{eventID:eventId});
+  const body=JSON.stringify({eventName,eventId,eventTime:Math.floor(Date.now()/1000),eventSourceUrl:sanitizedUrl,customData:sanitizedCustomData,userData:finalUserData,marketingConsent:true});
+  // Only retry the server copy. The browser event and CRM form are never repeated.
+  for(let attempt=0;attempt<2;attempt++) {
+    if(!hasMetaConsent()) break;
     try {
-      fetch('/api/meta/conversion', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          eventName,
-          eventId,
-          eventSourceUrl: sanitizedUrl,
-          customData: sanitizedCustomData,
-          userData: finalUserData,
-          testEventCode: testCode,
-          isProductionClient: isProd
-        }),
-        keepalive: true
-      }).catch((err) => {
-        // Non-blocking catch
-        console.warn('[Meta CAPI Request Warning]', err);
-      });
-    } catch (err) {
-      console.warn('[Meta CAPI Dispatch Warning]', err);
+      const response=await fetch('/api/meta/conversion',{method:'POST',headers:{'Content-Type':'application/json'},body,keepalive:true});
+      const result=await response.json();
+      if(response.ok && result.success===true) break;
+      if(attempt===0 && (response.status===429 || response.status>=500)) {await new Promise(resolve=>setTimeout(resolve,400));continue;}
+      console.warn('[Meta CAPI] Evento não confirmado',response.status);break;
+    } catch {
+      if(attempt===0) {await new Promise(resolve=>setTimeout(resolve,400));continue;}
+      console.warn('[Meta CAPI] Falha de rede');
     }
   }
-
   return eventId;
 }
 

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { ShieldCheck, MapPin, X, Lock, CheckCircle2, ChevronRight, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { requestBrowserLocation } from '../utils/internalAnalytics';
+import { initTrafficAttribution } from '../utils/trafficSource';
+import { trackMetaPageView, refreshMetaConsent } from '../utils/metaConversions';
 
 // Período de validade do consentimento segundo as boas práticas da LGPD (6 meses / 180 dias)
 const CONSENT_DURATION_MS = 180 * 24 * 60 * 60 * 1000;
@@ -97,10 +99,14 @@ export const ConsentBanner: React.FC = () => {
     setGeoConsent(true);
     setAnalyticsConsent(true);
     setMetaConsent(true);
-    // Dismiss banner completely after user accepts
     setIsVisible(false);
 
-    // Prompt browser geolocation directly on user gesture
+    // Initialize marketing attribution cookies and fire single PageView now that consent is valid
+    try {
+      initTrafficAttribution();
+      trackMetaPageView();
+    } catch {}
+
     await handleTriggerGeo();
   };
 
@@ -121,6 +127,7 @@ export const ConsentBanner: React.FC = () => {
     setGeoConsent(false);
     setAnalyticsConsent(false);
     setMetaConsent(false);
+    refreshMetaConsent();
     // Dismiss banner completely after rejecting non-essentials
     setIsVisible(false);
   };
@@ -139,8 +146,15 @@ export const ConsentBanner: React.FC = () => {
         lgpdVersion: '13.709/2018'
       })
     );
-    // Dismiss banner completely after saving options
     setIsVisible(false);
+
+    refreshMetaConsent();
+    if (metaConsent) {
+      try {
+        initTrafficAttribution();
+        trackMetaPageView();
+      } catch {}
+    }
 
     if (geoConsent) {
       await handleTriggerGeo();

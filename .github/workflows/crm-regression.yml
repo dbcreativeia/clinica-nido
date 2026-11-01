@@ -1,7 +1,7 @@
 name: CRM regression checks
 on:
   push:
-    branches: [main, 'fix/crm-persistence-sync-20261031']
+    branches: [main, 'fix/crm-persistence-sync-20261031', 'fix/meta-signal-quality-20261031']
   pull_request:
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test crm-sync.test.mjs
+      - run: node --test crm-sync.test.mjs meta-capi.test.mjs meta-conversions.test.ts meta-safety.test.ts
       - run: node --check server.ts
       - run: npm install --ignore-scripts
       - run: npm run lint

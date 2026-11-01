@@ -179,7 +179,6 @@ export const LeadCaptureModal: React.FC = () => {
         trackMetaEvent('Contact', {
           customData: {
             content_name: 'Atendimento e Consulta Estética',
-            service_label: serviceInterest || 'Avaliação Geral',
             content_category: 'Atendimento WhatsApp CRM',
             cta_location: ctaLocation
           },
@@ -188,9 +187,7 @@ export const LeadCaptureModal: React.FC = () => {
             ...(lastName ? { ln: lastName } : {}),
             ph: cleanPhoneDigits,
             em: cleanEmail.toLowerCase(),
-            country: 'br',
-            st: 'sp',
-            ct: 'sao paulo'
+            country: 'br'
           }
         });
       } catch (metaErr) {
