@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test crm-sync.test.mjs meta-capi.test.mjs meta-conversions.test.ts meta-safety.test.ts
+      - run: node --test crm-sync.test.mjs meta-capi.test.mjs meta-conversions.test.ts meta-safety.test.ts analytics-engine.test.mjs
       - run: node --check server.ts
       - run: npm install --ignore-scripts
       - run: npm run lint

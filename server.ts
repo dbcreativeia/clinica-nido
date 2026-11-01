@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
 import { sendMetaConversionEvent } from './meta-capi.mjs';
+import { initAnalyticsDatabase, recordAnalyticsEvent, getAnalyticsStats } from './analytics-engine.mjs';
 
 dotenv.config();
 
@@ -547,6 +548,20 @@ async function startServer() {
 
   // Initialize MySQL leads table if not exists
   let isDbReady = false;
+  let isAnalyticsDbReady = false;
+
+  async function initAnalyticsTable(): Promise<void> {
+    if (!dbPool) return;
+    try {
+      await initAnalyticsDatabase(dbPool);
+      isAnalyticsDbReady = true;
+      console.log('[MySQL Analytics Table Verified] Tabela nido_analytics_events pronta.');
+    } catch (err) {
+      console.error('[MySQL Analytics Init Table Error]', err);
+      isAnalyticsDbReady = false;
+    }
+  }
+
   async function initDatabase(): Promise<void> {
     if (!dbPool) return;
     try {
@@ -603,20 +618,33 @@ async function startServer() {
       isDbReady = true;
       console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
     } catch (err) {
-      console.error('[MySQL Init Table Error]', err);
+      console.error('[MySQL Init Leads Table Error]', err);
       isDbReady = false;
     }
+
+    await initAnalyticsTable().catch(console.error);
   }
 
   // Trigger table check on boot and await
   await initDatabase().catch(console.error);
   let databaseRetry: Promise<void> | null = null;
+  let analyticsRetry: Promise<void> | null = null;
+
   app.use(['/api/leads', '/api/integrations/kommo'], async (_req, res, next) => {
     if (!isDbReady) {
       if (!databaseRetry) databaseRetry = initDatabase().finally(() => { databaseRetry = null; });
       await databaseRetry;
     }
     if (!isDbReady) return res.status(503).json({success:false,error:'CRM indisponível: não foi possível conectar ao MySQL.'});
+    next();
+  });
+
+  app.use('/api/analytics', async (_req, res, next) => {
+    if (!isAnalyticsDbReady) {
+      if (!analyticsRetry) analyticsRetry = initAnalyticsTable().finally(() => { analyticsRetry = null; });
+      await analyticsRetry;
+    }
+    if (!isAnalyticsDbReady) return res.status(503).json({success:false,error:'Analytics indisponível: não foi possível conectar ao MySQL.'});
     next();
   });
 
@@ -1323,100 +1351,53 @@ async function startServer() {
   // --------------------------------------------------------------------------
   app.get('/api/analytics/stats', async (_req: Request, res: Response) => {
     try {
-      const analytics = await readAnalytics();
-      const leads = await readLeads();
-
-      const totalLeads = leads.length;
-      const qualifiedLeads = leads.filter((l) => l.status === 'agendado' || l.status === 'compareceu' || l.status === 'convertido').length;
-      const lostLeads = leads.filter((l) => l.status === 'perdido').length;
-      const totalVisitors = analytics.summary?.uniqueVisitors || 412;
-      const conversionRate = totalVisitors > 0 ? ((totalLeads / totalVisitors) * 100).toFixed(1) + '%' : '6.8%';
-
+      if (!isAnalyticsDbReady || !dbPool) {
+        return res.status(503).json({ success: false, error: 'Banco de dados de analytics indisponível' });
+      }
+      const stats = await getAnalyticsStats(dbPool);
       return res.json({
         success: true,
-        stats: {
-          ...analytics,
-          summary: {
-            ...analytics.summary,
-            totalLeads,
-            qualifiedLeads,
-            lostLeads,
-            leadConversionRate: conversionRate
-          }
-        }
+        version: 'nido-analytics-v1',
+        storage: 'mysql',
+        ready: true,
+        stats
       });
     } catch (err: unknown) {
       console.error('[Analytics Stats Error]', err);
-      return res.status(500).json({ error: 'Erro ao buscar dados de analytics' });
+      return res.status(503).json({ success: false, error: 'Banco de dados de analytics indisponível' });
     }
   });
 
   // Receive tracking event from front-end
   app.post('/api/analytics/event', async (req: Request, res: Response) => {
     try {
-      const { type, name, label, pagePath, city, neighborhood } = req.body;
-      const analytics = await readAnalytics();
-
-      if (type === 'route_click' && name) {
-        const route = analytics.routes?.find((r: any) => r.name === name);
-        if (route) {
-          route.clicks = (route.clicks || 0) + 1;
-        } else if (analytics.routes) {
-          analytics.routes.push({ name, label: label || name, clicks: 1, percentage: 1.0 });
-        }
-      } else if (type === 'treatment_view' && name) {
-        const treatment = analytics.treatments?.find((t: any) => t.name === name);
-        if (treatment) {
-          treatment.views = (treatment.views || 0) + 1;
-        }
-      } else if (type === 'cta_click' && label) {
-        const cta = analytics.ctaClicks?.find((c: any) => c.label === label);
-        if (cta) {
-          cta.clicks = (cta.clicks || 0) + 1;
-        }
+      if (!isAnalyticsDbReady || !dbPool) {
+        return res.status(503).json({ success: false, error: 'Banco de dados de analytics indisponível' });
       }
-
-      if (!analytics.recentLiveEvents) analytics.recentLiveEvents = [];
-      analytics.recentLiveEvents.unshift({
-        type: type || 'event',
-        label: label || name || 'Ação no site',
-        pagePath: pagePath || '/',
-        city: city || 'São Paulo',
-        neighborhood: neighborhood || 'Jardins',
-        timestamp: new Date().toISOString()
-      });
-      if (analytics.recentLiveEvents.length > 25) {
-        analytics.recentLiveEvents = analytics.recentLiveEvents.slice(0, 25);
+      const result = await recordAnalyticsEvent(dbPool, req.body || {});
+      if (result.error) {
+        return res.status(400).json({ success: false, ...result });
       }
-
-      if (analytics.summary) {
-        analytics.summary.totalPageViews = (analytics.summary.totalPageViews || 1480) + 1;
-      }
-
-      await writeAnalytics(analytics);
-      return res.json({ success: true });
+      return res.json({ success: true, ...result });
     } catch (err: unknown) {
       console.error('[Record Analytics Event Error]', err);
-      return res.status(500).json({ error: 'Erro ao registrar evento' });
+      return res.status(503).json({ success: false, error: 'Erro ao registrar evento de analytics' });
     }
   });
 
-  // Client Geo detection helper
+  // Client Geo detection helper (no fake default location)
   app.get('/api/analytics/geo', (req: Request, res: Response) => {
     const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const clientIp = Array.isArray(rawIp)
       ? rawIp[0]
       : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '');
 
-    // Default to São Paulo - Jardins
     return res.json({
       success: true,
       clientIp,
-      city: 'São Paulo',
-      state: 'SP',
-      neighborhood: 'Jardins / Cerqueira César',
-      latitude: -23.5673,
-      longitude: -46.6692
+      city: 'Não informada',
+      state: 'Não informada',
+      neighborhood: 'Não informada'
     });
   });
 

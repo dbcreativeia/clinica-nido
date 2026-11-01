@@ -1,4 +1,4 @@
-import { Treatment } from '../types';
+import type { Treatment } from '../types.ts';
 
 export const TREATMENTS: Treatment[] = [
   // --- PRIORITÁRIOS / NOVOS TRATAMENTOS ---

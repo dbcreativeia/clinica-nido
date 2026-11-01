@@ -101,6 +101,11 @@ export const ConsentBanner: React.FC = () => {
     setMetaConsent(true);
     setIsVisible(false);
 
+    // Notify analytics tracker dynamically without requiring page reload
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nido:analytics-consent-changed', { detail: { analytics: true } }));
+    }
+
     // Initialize marketing attribution cookies and fire single PageView now that consent is valid
     try {
       initTrafficAttribution();
@@ -127,8 +132,13 @@ export const ConsentBanner: React.FC = () => {
     setGeoConsent(false);
     setAnalyticsConsent(false);
     setMetaConsent(false);
+
+    // Notify analytics tracker of consent revocation
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nido:analytics-consent-changed', { detail: { analytics: false } }));
+    }
+
     refreshMetaConsent();
-    // Dismiss banner completely after rejecting non-essentials
     setIsVisible(false);
   };
 
@@ -147,6 +157,11 @@ export const ConsentBanner: React.FC = () => {
       })
     );
     setIsVisible(false);
+
+    // Notify analytics tracker dynamically
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nido:analytics-consent-changed', { detail: { analytics: analyticsConsent } }));
+    }
 
     refreshMetaConsent();
     if (metaConsent) {

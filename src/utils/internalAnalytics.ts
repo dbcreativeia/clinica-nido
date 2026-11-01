@@ -1,29 +1,115 @@
 /**
- * Internal Site Analytics & Visitor Geo-Attribution Tracker for Clínica Nidô.
- * Monitors route clicks, treatment views, CTA clicks, and visitor location.
+ * Internal Site Analytics & Visitor Attribution Tracker for Clínica Nidô.
+ * Monitors route clicks, page views, treatment views, CTA clicks, and visitor location with MySQL persistence.
  */
+
+import { getStoredTrafficAttribution } from './trafficSource.ts';
+import { TREATMENTS } from '../data/treatments.ts';
+import { TECHNOLOGIES } from '../data/technologies.ts';
 
 export interface VisitorLocation {
   city: string;
   state: string;
   neighborhood: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 const GEO_STORAGE_KEY = 'nido_visitor_geo';
 const VIEWED_TREATMENTS_KEY = 'nido_viewed_treatments';
+const SESSION_JOURNEY_KEY = 'nido_session_journey';
+const CONSENT_DURATION_MS = 180 * 24 * 60 * 60 * 1000;
 
-/**
- * Prompts visitor for browser Geolocation API position on site entry or consent
- */
+// Construct catalog map for resolving routes to official treatment/technology names
+const CATALOG_MAP = new Map<string, string>();
+if (Array.isArray(TREATMENTS)) {
+  for (const t of TREATMENTS) {
+    if (t && t.slug && t.name) CATALOG_MAP.set(t.slug.toLowerCase(), t.name);
+  }
+}
+if (Array.isArray(TECHNOLOGIES)) {
+  for (const tech of TECHNOLOGIES) {
+    if (tech && tech.slug && tech.name) CATALOG_MAP.set(tech.slug.toLowerCase(), tech.name);
+  }
+}
+
+export function hasAnalyticsConsent(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const consentSetting = localStorage.getItem('nido_cookie_consent');
+    if (!consentSetting) return false;
+    const parsed = JSON.parse(consentSetting);
+    if (parsed.analytics !== true) return false;
+
+    const timestamp = typeof parsed.timestamp === 'number' ? parsed.timestamp : 0;
+    const now = Date.now();
+
+    // Strict timestamp validation: 0 < timestamp <= now
+    if (timestamp <= 0 || timestamp > now) {
+      return false;
+    }
+
+    const expiresAt = typeof parsed.expiresAt === 'number' ? parsed.expiresAt : (timestamp + CONSENT_DURATION_MS);
+
+    if (now > expiresAt || (now - timestamp) > CONSENT_DURATION_MS) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getVisitorId(): string {
+  if (typeof window === 'undefined') return 'v_server';
+  try {
+    let vid = localStorage.getItem('nido_visitor_id');
+    if (!vid) {
+      vid = `v_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      localStorage.setItem('nido_visitor_id', vid);
+    }
+    return vid;
+  } catch {
+    return `v_temp_${Date.now()}`;
+  }
+}
+
+export function getSessionId(): string {
+  if (typeof window === 'undefined') return 's_server';
+  try {
+    let sid = sessionStorage.getItem('nido_session_id');
+    if (!sid) {
+      sid = `s_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      sessionStorage.setItem('nido_session_id', sid);
+    }
+    return sid;
+  } catch {
+    return `s_temp_${Date.now()}`;
+  }
+}
+
+export function isIgnoredPath(pathname: string): boolean {
+  if (!pathname) return false;
+  const lower = pathname.toLowerCase();
+  if (
+    lower.startsWith('/admin') || 
+    lower.includes('#admin') || 
+    lower === '/admin-crm' || 
+    lower === '/login'
+  ) {
+    return true;
+  }
+  if (typeof window !== 'undefined' && window.location.hash === '#admin') {
+    return true;
+  }
+  return false;
+}
+
 export function requestBrowserLocation(): Promise<VisitorLocation | null> {
   const fallbackLocation: VisitorLocation = {
-    city: 'São Paulo',
-    state: 'SP',
-    neighborhood: 'Água Branca / Zona Oeste',
-    latitude: -23.5234,
-    longitude: -46.6875
+    city: 'Não informada',
+    state: 'Não informada',
+    neighborhood: 'Não informada'
   };
 
   if (typeof window === 'undefined' || !navigator.geolocation) {
@@ -34,256 +120,253 @@ export function requestBrowserLocation(): Promise<VisitorLocation | null> {
     try {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          
-          let neighborhood = 'Região Atribuída por GPS';
-          let city = 'São Paulo';
-          
-          if (lat < -23.9) {
-            city = 'Santos';
-            neighborhood = 'Gonzaga / Orla';
-          } else if (lat > -23.1) {
-            city = 'Campinas';
-            neighborhood = 'Cambuí / Centro';
-          } else if (lng < -46.8) {
-            city = 'Barueri';
-            neighborhood = 'Alphaville & Tamboré';
-          } else if (lng > -46.55) {
-            city = 'Santo André';
-            neighborhood = 'Bairro Jardim';
-          } else {
-            city = 'São Paulo';
-            neighborhood = 'Água Branca / Zona Oeste';
-          }
-
           const locationObj: VisitorLocation = {
-            city,
-            state: 'SP',
-            neighborhood,
-            latitude: lat,
-            longitude: lng
+            city: 'Não informada',
+            state: 'Não informada',
+            neighborhood: 'Não informada',
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
           };
 
           try {
             sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(locationObj));
-          } catch {
-            // Ignore storage error
-          }
+          } catch {}
           resolve(locationObj);
         },
-        (_err) => {
-          // Graceful handling when browser/iframe permission policy restricts raw Geolocation
+        () => {
           try {
             sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(fallbackLocation));
-          } catch {
-            // Ignore
-          }
+          } catch {}
           resolve(fallbackLocation);
         },
         { timeout: 5000, enableHighAccuracy: true }
       );
     } catch {
-      // Permission policy or document restriction catch
       resolve(fallbackLocation);
     }
   });
 }
 
-/**
- * Resolves visitor geographic location using device GPS (navigator.geolocation)
- * with graceful fallback to IP-based location and cached in sessionStorage.
- */
 export async function getVisitorLocation(): Promise<VisitorLocation> {
-  if (typeof window === 'undefined') {
-    return {
-      city: 'São Paulo',
-      state: 'SP',
-      neighborhood: 'Água Branca',
-      latitude: -23.5234,
-      longitude: -46.6875
-    };
-  }
+  const fallback: VisitorLocation = {
+    city: 'Não informada',
+    state: 'Não informada',
+    neighborhood: 'Não informada'
+  };
 
-  // 1. Check existing session cache
+  if (typeof window === 'undefined') return fallback;
+
   try {
     const cached = sessionStorage.getItem(GEO_STORAGE_KEY);
     if (cached) {
       const parsed = JSON.parse(cached);
-      // If cached location has real GPS coordinates, reuse it
-      if (parsed && typeof parsed.latitude === 'number' && typeof parsed.longitude === 'number') {
-        return parsed;
-      }
+      if (parsed && parsed.city) return parsed;
     }
-  } catch {
-    // Ignore storage parse error
-  }
+  } catch {}
 
-  // 2. Attempt real device GPS via HTML5 Geolocation API (high accuracy)
-  if (navigator && 'geolocation' in navigator) {
-    try {
-      const gpsPosition = await new Promise<GeolocationPosition | null>((resolve) => {
-        const timeoutId = setTimeout(() => resolve(null), 3500); // 3.5s timeout for snappy UX
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            clearTimeout(timeoutId);
-            resolve(pos);
-          },
-          () => {
-            clearTimeout(timeoutId);
-            resolve(null);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 3000,
-            maximumAge: 60000
-          }
-        );
-      });
-
-      if (gpsPosition && gpsPosition.coords) {
-        const { latitude, longitude } = gpsPosition.coords;
-
-        // Try reverse geocoding coordinates to get neighborhood and city (OpenStreetMap Nominatim)
-        let resolvedCity = 'São Paulo';
-        let resolvedState = 'SP';
-        let resolvedNeighborhood = 'Localização GPS Exata';
-
-        try {
-          const revRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } }
-          );
-          if (revRes.ok) {
-            const revData = await revRes.json();
-            const addr = revData.address || {};
-            resolvedCity = addr.city || addr.town || addr.municipality || 'São Paulo';
-            resolvedState = addr.state_code || addr.state || 'SP';
-            resolvedNeighborhood = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || 'Localização GPS';
-          }
-        } catch {
-          // Keep default labels if reverse geocode fails
-        }
-
-        const exactGpsLocation: VisitorLocation = {
-          city: resolvedCity,
-          state: resolvedState,
-          neighborhood: resolvedNeighborhood,
-          latitude,
-          longitude
-        };
-
-        try {
-          sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(exactGpsLocation));
-        } catch {
-          // Ignore storage error
-        }
-
-        return exactGpsLocation;
-      }
-    } catch {
-      // Continue to IP fallback
-    }
-  }
-
-  // 3. Fallback: Query backend IP-based geo detection
-  try {
-    const res = await fetch('/api/analytics/geo');
-    const data = await res.json();
-    if (data.success && data.city) {
-      const geo: VisitorLocation = {
-        city: data.city,
-        state: data.state || 'SP',
-        neighborhood: data.neighborhood || 'Água Branca',
-        latitude: data.latitude || -23.5234,
-        longitude: data.longitude || -46.6875
-      };
-      try {
-        sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(geo));
-      } catch {
-        // Ignore storage error
-      }
-      return geo;
-    }
-  } catch (err) {
-    console.warn('[Geo Detection Fallback]', err);
-  }
-
-  const fallback: VisitorLocation = {
-    city: 'São Paulo',
-    state: 'SP',
-    neighborhood: 'Água Branca / Perdizes',
-    latitude: -23.5234,
-    longitude: -46.6875
-  };
   return fallback;
 }
 
-/**
- * Tracks route navigation clicks (menu links, anchor links, internal navigation)
- */
-export async function trackRouteClick(routeName: string, label: string): Promise<void> {
-  try {
-    const loc = await getVisitorLocation();
-    fetch('/api/analytics/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'route_click',
-        name: routeName,
-        label,
-        pagePath: typeof window !== 'undefined' ? window.location.pathname : '/',
-        city: loc.city,
-        neighborhood: loc.neighborhood
-      }),
-      keepalive: true
-    }).catch(() => {});
-  } catch {
-    // Non-blocking
+function generateShortEventId(prefix: string): string {
+  const shortSession = getSessionId().replace(/[^a-z0-9]/gi, '').slice(-6);
+  const timeStr = Date.now().toString(36);
+  const randStr = Math.random().toString(36).slice(2, 6);
+  return `${prefix}_${shortSession}_${timeStr}_${randStr}`;
+}
+
+export function sendAnalyticsEventPayload(payload: Record<string, unknown>, useBeacon = false): void {
+  if (typeof window === 'undefined' || !hasAnalyticsConsent()) return;
+  const pagePath = String(payload.pagePath || window.location.pathname);
+  if (isIgnoredPath(pagePath)) return;
+
+  const attribution = getStoredTrafficAttribution();
+  const isPreview = !['nidoestetica.com.br', 'www.nidoestetica.com.br'].includes(window.location.hostname.toLowerCase());
+
+  const body = JSON.stringify({
+    ...payload,
+    trafficChannel: payload.trafficChannel || attribution?.channel || 'Direto',
+    trafficSource: payload.trafficSource || attribution?.source || 'direto',
+    visitorId: getVisitorId(),
+    sessionId: getSessionId(),
+    isPreview
+  });
+
+  if (useBeacon && navigator.sendBeacon) {
+    try {
+      const blob = new Blob([body], { type: 'application/json' });
+      if (navigator.sendBeacon('/api/analytics/event', blob)) return;
+    } catch {}
+  }
+
+  fetch('/api/analytics/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true
+  }).catch(() => {});
+}
+
+let currentPagePath = '';
+let pageEventId = '';
+let accumulatedMs = 0;
+let activeSince: number | null = null;
+let heartbeatInterval: any = null;
+
+function getActiveDurationSeconds(): number {
+  const now = Date.now();
+  const currentActiveMs = accumulatedMs + (activeSince === null ? 0 : Math.max(0, now - activeSince));
+  return Math.max(1, Math.round(currentActiveMs / 1000));
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
   }
 }
 
-/**
- * Tracks treatment views and keeps a list of visited treatments for lead attribution
- */
-export async function trackTreatmentView(treatmentName: string): Promise<void> {
-  try {
-    // Add to session list of viewed treatments
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = sessionStorage.getItem(VIEWED_TREATMENTS_KEY);
-        const list: string[] = stored ? JSON.parse(stored) : [];
-        if (!list.includes(treatmentName)) {
-          list.push(treatmentName);
-          sessionStorage.setItem(VIEWED_TREATMENTS_KEY, JSON.stringify(list));
-        }
-      } catch {
-        // Ignore storage error
-      }
+function startHeartbeat() {
+  stopHeartbeat();
+  if (typeof window === 'undefined') return;
+  heartbeatInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible' && currentPagePath && pageEventId) {
+      const seconds = getActiveDurationSeconds();
+      sendAnalyticsEventPayload({
+        type: 'page_view',
+        eventId: pageEventId,
+        pagePath: currentPagePath,
+        durationSeconds: seconds
+      }, false);
     }
-
-    const loc = await getVisitorLocation();
-    fetch('/api/analytics/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'treatment_view',
-        name: treatmentName,
-        label: `Visualizou: ${treatmentName}`,
-        pagePath: typeof window !== 'undefined' ? window.location.pathname : '/',
-        city: loc.city,
-        neighborhood: loc.neighborhood
-      }),
-      keepalive: true
-    }).catch(() => {});
-  } catch {
-    // Non-blocking
+  }, 30000);
+  if (heartbeatInterval && typeof heartbeatInterval.unref === 'function') {
+    heartbeatInterval.unref();
   }
 }
 
-/**
- * Gets the list of treatments this visitor inspected during their session
- */
+export function flushCurrentDuration(): void {
+  if (currentPagePath && pageEventId) {
+    const seconds = getActiveDurationSeconds();
+    sendAnalyticsEventPayload({
+      type: 'page_view',
+      eventId: pageEventId,
+      pagePath: currentPagePath,
+      durationSeconds: seconds
+    }, true);
+  }
+}
+
+export function recordRouteNavigation(newPath: string, newTitle: string): void {
+  if (typeof window === 'undefined' || isIgnoredPath(newPath)) return;
+  if (!hasAnalyticsConsent()) return;
+
+  // StrictMode deduplication: ONLY ignore if navigating to the exact same currentPagePath that is ALREADY active with pageEventId
+  if (newPath === currentPagePath && pageEventId !== '') {
+    return;
+  }
+
+  // Flush duration of previous page if active
+  if (currentPagePath && pageEventId) {
+    flushCurrentDuration();
+  }
+
+  // Reset active counters for new page
+  currentPagePath = newPath;
+  accumulatedMs = 0;
+  activeSince = Date.now();
+  pageEventId = generateShortEventId('pv');
+
+  let loc: VisitorLocation | null = null;
+  try {
+    const storedGeo = sessionStorage.getItem(GEO_STORAGE_KEY);
+    if (storedGeo) loc = JSON.parse(storedGeo);
+  } catch {}
+
+  sendAnalyticsEventPayload({
+    type: 'page_view',
+    eventId: pageEventId,
+    pagePath: newPath,
+    label: newTitle || newPath,
+    city: loc?.city || 'Não informada',
+    state: loc?.state || 'Não informada',
+    neighborhood: loc?.neighborhood || 'Não informada',
+    durationSeconds: 0
+  });
+
+  // Check if this route belongs to a treatment or technology page and trigger treatment_view once per pageview
+  const lower = newPath.toLowerCase();
+  if (lower.startsWith('/tratamentos/') || lower.startsWith('/tecnologias/')) {
+    const slug = lower.replace(/^\/(tratamentos|tecnologias)\//, '').split('?')[0].split('#')[0];
+    const treatmentName = CATALOG_MAP.get(slug) || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    trackTreatmentView(treatmentName);
+  }
+
+  // Maintain local session journey for lead capture modal
+  try {
+    const now = Date.now();
+    const raw = sessionStorage.getItem(SESSION_JOURNEY_KEY);
+    const journey = raw ? JSON.parse(raw) : {
+      startedAt: new Date().toISOString(),
+      totalDurationSeconds: 0,
+      totalPageViews: 0,
+      steps: [],
+      ...detectDeviceInfo()
+    };
+    
+    journey.steps.push({ path: newPath, title: newTitle || newPath, enteredAt: now, durationSeconds: 0 });
+    journey.totalPageViews = journey.steps.length;
+    sessionStorage.setItem(SESSION_JOURNEY_KEY, JSON.stringify(journey));
+  } catch {}
+
+  startHeartbeat();
+}
+
+export function trackRouteClick(routeName: string, label: string): void {
+  if (isIgnoredPath(routeName) || !hasAnalyticsConsent()) return;
+  const eventId = generateShortEventId('rc');
+  sendAnalyticsEventPayload({
+    type: 'route_click',
+    eventId,
+    name: routeName,
+    label: label || routeName,
+    pagePath: typeof window !== 'undefined' ? window.location.pathname : '/'
+  });
+}
+
+export function trackTreatmentView(treatmentName: string): void {
+  if (!hasAnalyticsConsent()) return;
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem(VIEWED_TREATMENTS_KEY);
+      const list: string[] = stored ? JSON.parse(stored) : [];
+      if (!list.includes(treatmentName)) {
+        list.push(treatmentName);
+        sessionStorage.setItem(VIEWED_TREATMENTS_KEY, JSON.stringify(list));
+      }
+    } catch {}
+  }
+
+  const eventId = generateShortEventId('tv');
+  sendAnalyticsEventPayload({
+    type: 'treatment_view',
+    eventId,
+    name: treatmentName,
+    label: `Visualizou: ${treatmentName}`,
+    pagePath: typeof window !== 'undefined' ? window.location.pathname : '/'
+  });
+}
+
+export function trackCTAClick(label: string, location?: string): void {
+  if (!hasAnalyticsConsent()) return;
+  const eventId = generateShortEventId('cta');
+  sendAnalyticsEventPayload({
+    type: 'cta_click',
+    eventId,
+    label,
+    pagePath: location || (typeof window !== 'undefined' ? window.location.pathname : '/')
+  });
+}
+
 export function getSessionViewedTreatments(): string[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -294,13 +377,10 @@ export function getSessionViewedTreatments(): string[] {
   }
 }
 
-/**
- * Page Journey & Duration Tracking
- */
 export interface PageVisitStep {
   path: string;
   title: string;
-  enteredAt: number; // timestamp ms
+  enteredAt: number;
   durationSeconds: number;
 }
 
@@ -313,19 +393,12 @@ export interface SessionJourney {
   browser: string;
 }
 
-const SESSION_JOURNEY_KEY = 'nido_session_journey';
-let currentPageStart = Date.now();
-let currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
-
-function detectDeviceInfo(): { deviceType: 'Mobile' | 'Desktop' | 'Tablet'; browser: string } {
+export function detectDeviceInfo(): { deviceType: 'Mobile' | 'Desktop' | 'Tablet'; browser: string } {
   if (typeof window === 'undefined') return { deviceType: 'Desktop', browser: 'Unknown' };
-  const ua = navigator.userAgent;
+  const ua = navigator.userAgent || '';
   let deviceType: 'Mobile' | 'Desktop' | 'Tablet' = 'Desktop';
-  if (/iPad|tablet/i.test(ua)) {
-    deviceType = 'Tablet';
-  } else if (/Mobi|Android|iPhone/i.test(ua)) {
-    deviceType = 'Mobile';
-  }
+  if (/iPad|tablet/i.test(ua)) deviceType = 'Tablet';
+  else if (/Mobi|Android|iPhone/i.test(ua)) deviceType = 'Mobile';
 
   let browser = 'Navegador Web';
   if (ua.includes('Instagram')) browser = 'Instagram In-App Browser';
@@ -338,70 +411,12 @@ function detectDeviceInfo(): { deviceType: 'Mobile' | 'Desktop' | 'Tablet'; brow
   return { deviceType, browser };
 }
 
-/**
- * Call on each route change to record previous page duration and push to session journey
- */
-export function recordRouteNavigation(newPath: string, newTitle: string): void {
-  if (typeof window === 'undefined') return;
-
-  const now = Date.now();
-  const timeSpentOnPrevPage = Math.max(1, Math.round((now - currentPageStart) / 1000));
-
-  try {
-    const raw = sessionStorage.getItem(SESSION_JOURNEY_KEY);
-    const journey: SessionJourney = raw ? JSON.parse(raw) : {
-      startedAt: new Date().toISOString(),
-      totalDurationSeconds: 0,
-      totalPageViews: 0,
-      steps: [],
-      ...detectDeviceInfo()
-    };
-
-    // If there is an existing step for the previous page, record duration
-    if (journey.steps.length > 0) {
-      const lastStep = journey.steps[journey.steps.length - 1];
-      if (lastStep.path === currentPath) {
-        lastStep.durationSeconds += timeSpentOnPrevPage;
-      }
-    } else if (currentPath) {
-      // First recorded step
-      journey.steps.push({
-        path: currentPath,
-        title: document.title || 'Início',
-        enteredAt: currentPageStart,
-        durationSeconds: timeSpentOnPrevPage
-      });
-    }
-
-    // Add new page step
-    journey.steps.push({
-      path: newPath,
-      title: newTitle || newPath,
-      enteredAt: now,
-      durationSeconds: 0
-    });
-
-    journey.totalPageViews = journey.steps.length;
-    journey.totalDurationSeconds = journey.steps.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
-
-    sessionStorage.setItem(SESSION_JOURNEY_KEY, JSON.stringify(journey));
-  } catch {
-    // Ignore storage errors
-  }
-
-  currentPageStart = now;
-  currentPath = newPath;
-}
-
-/**
- * Gets the current session journey snapshot with up-to-the-second duration for lead attribution
- */
 export function getSessionJourney(): SessionJourney {
   const fallback: SessionJourney = {
     startedAt: new Date().toISOString(),
     totalDurationSeconds: 0,
     totalPageViews: 1,
-    steps: [{ path: currentPath, title: 'Início', enteredAt: currentPageStart, durationSeconds: 0 }],
+    steps: [{ path: currentPagePath || '/', title: 'Início', enteredAt: Date.now(), durationSeconds: 0 }],
     ...detectDeviceInfo()
   };
 
@@ -411,52 +426,125 @@ export function getSessionJourney(): SessionJourney {
     const raw = sessionStorage.getItem(SESSION_JOURNEY_KEY);
     const journey: SessionJourney = raw ? JSON.parse(raw) : fallback;
 
-    // Flush active time on current page
-    const now = Date.now();
-    const activeCurrentTime = Math.max(1, Math.round((now - currentPageStart) / 1000));
+    const activeSecs = getActiveDurationSeconds();
     if (journey.steps.length > 0) {
       const last = journey.steps[journey.steps.length - 1];
-      if (last.path === currentPath) {
-        last.durationSeconds = Math.max(last.durationSeconds || 0, activeCurrentTime);
+      if (last.path === currentPagePath) {
+        last.durationSeconds = Math.max(last.durationSeconds || 0, activeSecs);
       }
-    } else {
-      journey.steps.push({
-        path: currentPath,
-        title: document.title || currentPath,
-        enteredAt: currentPageStart,
-        durationSeconds: activeCurrentTime
-      });
     }
 
     journey.totalDurationSeconds = journey.steps.reduce((acc, s) => acc + (s.durationSeconds || 0), 0);
     journey.totalPageViews = journey.steps.length;
+    const device = detectDeviceInfo();
+    journey.deviceType = device.deviceType;
+    journey.browser = device.browser;
+
     return journey;
   } catch {
     return fallback;
   }
 }
 
-/**
- * Tracks CTA clicks (WhatsApp, Agendar, Como Chegar / Rotas)
- */
-export async function trackCTAClick(label: string, location?: string): Promise<void> {
-  try {
-    const loc = await getVisitorLocation();
-    fetch('/api/analytics/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'cta_click',
-        label,
-        pagePath: typeof window !== 'undefined' ? window.location.pathname : '/',
-        city: loc.city,
-        neighborhood: loc.neighborhood,
-        metadata: { location }
-      }),
-      keepalive: true
-    }).catch(() => {});
-  } catch {
-    // Non-blocking
-  }
+function setupGlobalListeners() {
+  if (typeof window === 'undefined') return;
+
+  // Listen for consent changes dynamically without requiring reload
+  window.addEventListener('nido:analytics-consent-changed', () => {
+    if (hasAnalyticsConsent()) {
+      if (!currentPagePath) {
+        recordRouteNavigation(window.location.pathname, document.title);
+      } else {
+        activeSince = Date.now();
+        startHeartbeat();
+        // Trigger treatment view if current path is a treatment/technology page
+        const lower = currentPagePath.toLowerCase();
+        if (lower.startsWith('/tratamentos/') || lower.startsWith('/tecnologias/')) {
+          const slug = lower.replace(/^\/(tratamentos|tecnologias)\//, '').split('?')[0].split('#')[0];
+          const treatmentName = CATALOG_MAP.get(slug) || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          trackTreatmentView(treatmentName);
+        }
+      }
+    } else {
+      activeSince = null;
+      accumulatedMs = 0;
+      stopHeartbeat();
+    }
+  });
+
+  // Handle tab visibility changes to pause duration while hidden
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (activeSince !== null) {
+        accumulatedMs += Math.max(0, Date.now() - activeSince);
+        activeSince = null;
+      }
+      stopHeartbeat();
+      flushCurrentDuration();
+    } else if (document.visibilityState === 'visible' && hasAnalyticsConsent()) {
+      activeSince = Date.now();
+      startHeartbeat();
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    if (activeSince !== null) {
+      accumulatedMs += Math.max(0, Date.now() - activeSince);
+      activeSince = null;
+    }
+    flushCurrentDuration();
+    stopHeartbeat();
+  });
+
+  // Delegated click listener for links & CTA buttons (treatment view removed from here, handled in pageview)
+  document.addEventListener('click', (ev) => {
+    if (!hasAnalyticsConsent()) return;
+    const currentPath = window.location.pathname;
+    if (isIgnoredPath(currentPath)) return;
+
+    const target = ev.target as HTMLElement | null;
+    if (!target) return;
+
+    // Skip form inputs, textareas, selects
+    const tag = target.tagName.toLowerCase();
+    if (['input', 'textarea', 'select', 'option'].includes(tag)) return;
+
+    const clickable = target.closest('a, button, [role="button"]') as HTMLElement | null;
+    if (!clickable) return;
+
+    const rawLabel = (
+      clickable.getAttribute('aria-label') || 
+      clickable.getAttribute('title') || 
+      clickable.innerText || 
+      ''
+    ).replace(/\s+/g, ' ').trim().slice(0, 80);
+
+    const href = clickable.getAttribute('href') || '';
+
+    if (href) {
+      if (href.startsWith('http') || href.startsWith('//')) {
+        const lowerHref = href.toLowerCase();
+        if (lowerHref.includes('wa.me') || lowerHref.includes('whatsapp') || lowerHref.includes('maps') || lowerHref.includes('waze')) {
+          trackCTAClick(rawLabel || 'Contato Externo', href);
+        } else {
+          trackRouteClick(href, rawLabel || href);
+        }
+      } else if (href.startsWith('/') || href.startsWith('#')) {
+        const cleanPath = href.split('?')[0].split('#')[0];
+        if (cleanPath && !isIgnoredPath(cleanPath)) {
+          trackRouteClick(cleanPath, rawLabel || cleanPath);
+        }
+      }
+    } else if (clickable.tagName.toLowerCase() === 'button' || clickable.getAttribute('role') === 'button') {
+      const buttonType = clickable.getAttribute('type');
+      if (buttonType !== 'submit' && rawLabel) {
+        trackCTAClick(rawLabel, currentPath);
+      }
+    }
+  });
 }
 
+// Auto-run global listeners on client import
+if (typeof window !== 'undefined') {
+  setupGlobalListeners();
+}

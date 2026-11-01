@@ -3,7 +3,7 @@
  * Captures UTM parameters, click IDs (gclid, fbclid), and referrers to accurately attribute lead origins.
  */
 
-import { getOrCreateFbc, getOrCreateFbp, hasMetaConsent } from './metaConversions';
+import { getOrCreateFbc, getOrCreateFbp, hasMetaConsent } from './metaConversions.ts';
 
 export type TrafficChannel = 
   | 'Google Ads'

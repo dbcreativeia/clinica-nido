@@ -1,4 +1,4 @@
-import { Technology } from '../types';
+import type { Technology } from '../types.ts';
 
 export const TECHNOLOGIES: Technology[] = [
   {
