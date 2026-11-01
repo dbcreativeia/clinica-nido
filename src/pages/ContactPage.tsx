@@ -32,7 +32,6 @@ export const ContactPage: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting,setIsSubmitting]=useState(false);
   const [formError, setFormError] = useState('');
-  const [showMap,setShowMap]=useState(false);
 
   // Coordenadas e endereço da clínica
   const addressQuery = encodeURIComponent('Rua Dona Germaine Burchard, 499 - Água Branca, São Paulo - SP');
@@ -276,13 +275,13 @@ export const ContactPage: React.FC = () => {
           {/* Mapa Certinho Incorporado */}
           <div className="space-y-2 pt-2">
             <div className="aspect-16/10 sm:aspect-21/9 rounded-3xl overflow-hidden border border-[#E5DAD0] relative bg-[#EFE6DC] shadow-sm">
-              {showMap?<iframe
+              <iframe
                 title="Mapa de Localização da Clínica Nidô"
                 src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3658.212726359055!2d-46.68078332386121!3d-23.524856078824147!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x94cef80709b11b9b%3A0xe9634e0631627885!2sR.%20Dona%20Germaine%20Burchard%2C%20499%20-%20%C3%81gua%20Branca%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2005002-062!5e0!3m2!1spt-BR!2sbr!4v1700000000000!5m2!1spt-BR!2sbr"
                 className="w-full h-full border-0"
-                loading="lazy"
+                loading="eager"
                 referrerPolicy="no-referrer"
-              />:<div className="h-full min-h-48 flex flex-col items-center justify-center gap-3 p-6 text-center text-[#44342E]"><p className="text-sm max-w-md">O mapa é fornecido pelo Google. Ao carregá-lo, seu navegador se conecta ao Google, que recebe dados técnicos como IP. Isso não autoriza o GPS nem o armazenamento de coordenadas no CRM.</p><button type="button" onClick={()=>setShowMap(true)} className="border border-[#44342E] rounded-xl px-5 py-3 text-sm font-semibold cursor-pointer">Carregar mapa do Google</button></div>}
+              />
             </div>
             <p className="text-xs text-[#66534B] text-center pt-1 font-medium">
               Rua Dona Germaine Burchard, 499 • Água Branca, São Paulo — SP
