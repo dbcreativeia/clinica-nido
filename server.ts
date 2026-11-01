@@ -608,30 +608,26 @@ async function startServer() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // Add columns if table was previously created without them
       try {
         await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN session_journey JSON AFTER viewed_treatments;`);
-      } catch {
-        // Already exists
-      }
+      } catch {}
       try {
         await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
-      } catch {
-        // Already exists
-      }
+      } catch {}
 
       isDbReady = true;
-      console.log('[MySQL Table Verified] Tabela nido_leads pronta com procedure_cycles.');
+      console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
     } catch (err) {
       console.error('[MySQL Init Table Error]', err);
+      isDbReady = false;
     }
   }
 
-  // Trigger table check on boot
-  initDatabase().catch(console.error);
+  // Trigger table check on boot and await
+  await initDatabase().catch(console.error);
 
   async function readLeads(): Promise<StoredLead[]> {
-    if (isDbReady && dbPool) {
+    if (dbPool) {
       try {
         const [rows] = await dbPool.query<any[]>('SELECT * FROM nido_leads ORDER BY created_at DESC');
         return rows.map((r) => ({
@@ -1276,7 +1272,7 @@ async function startServer() {
     try {
       const { id } = req.params;
 
-      if (isDbReady && dbPool) {
+      if (dbPool) {
         try {
           await dbPool.query('DELETE FROM nido_leads WHERE id = ?', [id]);
         } catch (dbErr) {
