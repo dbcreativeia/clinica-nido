@@ -18,6 +18,7 @@ import { SEOHead } from '../components/SEOHead';
 import { getStoredTrafficAttribution, initTrafficAttribution } from '../utils/trafficSource';
 import { trackMetaEvent, captureMetaContext } from '../utils/metaConversions';
 
+import {getVisitorLocation} from '../utils/internalAnalytics';
 import {LocationPreferences} from '../components/LocationPreferences';
 import { persistContactLead } from '../utils/leadSubmission';
 
@@ -67,6 +68,7 @@ export const ContactPage: React.FC = () => {
     // Save lead to CRM
     try {
       await persistContactLead({
+          ...await getVisitorLocation(),
           metaContext: captureMetaContext(),
           attribution: traffic,
           name: cleanName,
