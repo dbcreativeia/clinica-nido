@@ -1,0 +1,20 @@
+name: CRM regression checks
+on:
+  push:
+    branches: [main, 'fix/crm-persistence-sync-20261031']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test crm-sync.test.mjs
+      - run: node --check server.ts
+      - run: npm install --ignore-scripts
+      - run: npm run lint
+      - run: npm run build

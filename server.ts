@@ -6,6 +6,7 @@ import fs from 'fs';
 import { promises as fsp } from 'fs';
 import crypto from 'crypto';
 import mysql from 'mysql2/promise';
+import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
 
 dotenv.config();
 
@@ -21,7 +22,8 @@ const MYSQL_CONFIG = {
   database: process.env.MYSQL_DATABASE || 'nidoestetica_novosite',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0,
+  queueLimit: 100,
+  connectTimeout: 8000,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000
 };
@@ -235,6 +237,7 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware for JSON and urlencoded parsing (Kommo webhooks send application/x-www-form-urlencoded)
+  app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
@@ -560,6 +563,7 @@ async function startServer() {
     }>;
     kommoLeadId?: string;
     kommoStatusId?: string;
+    kommoUpdatedAt?: number;
     createdAt: string;
     updatedAt: string;
   }
@@ -615,6 +619,10 @@ async function startServer() {
         await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
       } catch {}
 
+      for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0']) {
+        try { await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN ${definition}`); }
+        catch (error: any) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+      }
       isDbReady = true;
       console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
     } catch (err) {
@@ -625,11 +633,23 @@ async function startServer() {
 
   // Trigger table check on boot and await
   await initDatabase().catch(console.error);
+  let databaseRetry: Promise<void> | null = null;
+  app.use(['/api/leads', '/api/integrations/kommo'], async (_req, res, next) => {
+    if (!isDbReady) {
+      if (!databaseRetry) databaseRetry = initDatabase().finally(() => { databaseRetry = null; });
+      await databaseRetry;
+    }
+    if (!isDbReady) return res.status(503).json({success:false,error:'CRM indisponível: não foi possível conectar ao MySQL.'});
+    next();
+  });
 
+  function requireLeadDatabase(): mysql.Pool {
+    if (!dbPool || !isDbReady) throw new Error('Banco de dados do CRM indisponível');
+    return dbPool;
+  }
   async function readLeads(): Promise<StoredLead[]> {
-    if (dbPool) {
-      try {
-        const [rows] = await dbPool.query<any[]>('SELECT * FROM nido_leads ORDER BY created_at DESC');
+    const pool = requireLeadDatabase();
+    const [rows] = await pool.query<any[]>('SELECT * FROM nido_leads WHERE deleted_at IS NULL ORDER BY created_at DESC');
         return rows.map((r) => ({
           id: r.id,
           name: r.name,
@@ -663,29 +683,15 @@ async function startServer() {
           metaLeadSentAt: r.meta_lead_sent_at ? new Date(r.meta_lead_sent_at).toISOString() : undefined,
           kommoLeadId: r.kommo_lead_id,
           kommoStatusId: r.kommo_status_id,
+          kommoUpdatedAt: Number(r.kommo_updated_at) || 0,
           createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
           updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString()
         }));
-      } catch (err) {
-        console.error('[MySQL Read Leads Error, using fallback]', err);
-      }
-    }
-
-    try {
-      await ensureLeadsFile();
-      const content = await fsp.readFile(LEADS_FILE, 'utf-8');
-      return JSON.parse(content || '[]');
-    } catch (e) {
-      console.error('Error reading leads:', e);
-      return [];
-    }
   }
 
-  async function writeLeads(leads: StoredLead[]): Promise<void> {
-    if (isDbReady && dbPool) {
-      try {
-        for (const l of leads) {
-          await dbPool.query(`
+  async function insertLead(l: StoredLead): Promise<void> {
+    const pool = requireLeadDatabase();
+          await pool.query(`
             INSERT INTO nido_leads (
               id, name, phone, email, service_interest, cta_location, message,
               traffic_channel, traffic_source, traffic_medium, traffic_campaign,
@@ -694,16 +700,6 @@ async function startServer() {
               viewed_treatments, session_journey, procedure_cycles, status, notes, meta_lead_sent, meta_lead_sent_at,
               kommo_lead_id, kommo_status_id, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-              session_journey = VALUES(session_journey),
-              procedure_cycles = VALUES(procedure_cycles),
-              status = VALUES(status),
-              notes = VALUES(notes),
-              meta_lead_sent = VALUES(meta_lead_sent),
-              meta_lead_sent_at = VALUES(meta_lead_sent_at),
-              kommo_lead_id = VALUES(kommo_lead_id),
-              kommo_status_id = VALUES(kommo_status_id),
-              updated_at = VALUES(updated_at)
           `, [
             l.id,
             l.name || '',
@@ -740,19 +736,35 @@ async function startServer() {
             l.createdAt ? new Date(l.createdAt) : new Date(),
             l.updatedAt ? new Date(l.updatedAt) : new Date()
           ]);
-        }
-      } catch (err) {
-        console.error('[MySQL Write Leads Error, falling back to JSON]', err);
-      }
-    }
+  }
 
-    // Keep JSON file in sync as backup
-    try {
-      await ensureLeadsFile();
-      await fsp.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8');
-    } catch (e) {
-      console.error('Error writing leads backup file:', e);
-    }
+  async function updateLeadFields(id: string, changes: Record<string, any>): Promise<boolean> {
+    const columns: Record<string, string> = {
+      status:'status', notes:'notes', metaLeadSent:'meta_lead_sent', metaLeadSentAt:'meta_lead_sent_at',
+      serviceInterest:'service_interest', procedureCycles:'procedure_cycles', sessionJourney:'session_journey', viewedTreatments:'viewed_treatments'
+    };
+    const entries = Object.entries(changes).filter(([key,value]) => columns[key] && value !== undefined);
+    if (!entries.length) return true;
+    const jsonKeys = ['procedureCycles','sessionJourney','viewedTreatments'];
+    const values = entries.map(([key,value]) => jsonKeys.includes(key) ? JSON.stringify(value) : key === 'metaLeadSentAt' ? (value ? new Date(value) : null) : key === 'metaLeadSent' ? Number(Boolean(value)) : value);
+    const [result] = await requireLeadDatabase().query<mysql.ResultSetHeader>(
+      `UPDATE nido_leads SET ${entries.map(([key])=>`${columns[key]}=?`).join(',')}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`, [...values,id]);
+    return result.affectedRows > 0;
+  }
+
+  const kommoRepo = {
+    list: readLeads,
+    apply: async (id: string, k: any, status: string) => createKommoRepository(requireLeadDatabase(), readLeads).apply(id,k,status),
+    remove: async (id: string) => createKommoRepository(requireLeadDatabase(), readLeads).remove(id)
+  };
+  async function kommoRequest(resource: string): Promise<any> {
+    if (!KOMMO_TOKEN) throw new Error('Token do Kommo não configurado');
+    const response = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/${resource}`, {
+      headers: {Authorization:`Bearer ${KOMMO_TOKEN}`,Accept:'application/hal+json'}, signal:AbortSignal.timeout(15000)
+    });
+    if (response.status === 404 || response.status === 204) return null;
+    if (!response.ok) throw new Error(`Kommo HTTP ${response.status}`);
+    return await response.json();
   }
 
   async function readAnalytics(): Promise<any> {
@@ -841,13 +853,13 @@ async function startServer() {
       const leadLat = hasExactCoords ? latitude : randomGeo.latitude;
       const leadLng = hasExactCoords ? longitude : randomGeo.longitude;
 
-      const cleanDigitsPhone = String(phone).replace(/\D/g, '');
+      const cleanDigitsPhone = normalizedPhone(phone);
       const leads = await readLeads();
 
       // Check if this patient already exists by phone digits (or exact email)
       const existingPatientIdx = leads.findIndex((l) => {
-        const existingDigits = (l.phone || '').replace(/\D/g, '');
-        if (cleanDigitsPhone && existingDigits && (existingDigits === cleanDigitsPhone || existingDigits.endsWith(cleanDigitsPhone.slice(-8)))) {
+        const existingDigits = normalizedPhone(l.phone);
+        if (cleanDigitsPhone && existingDigits && existingDigits === cleanDigitsPhone) {
           return true;
         }
         if (email && l.email && l.email.toLowerCase() === email.toLowerCase()) {
@@ -944,18 +956,21 @@ async function startServer() {
         leads.unshift(leadToSave);
       }
 
-      await writeLeads(leads);
+      if (existingPatientIdx === -1) await insertLead(leadToSave);
+      else {
+        const updated = await updateLeadFields(leadToSave.id, {
+          status: leadToSave.status, serviceInterest: leadToSave.serviceInterest, procedureCycles: leadToSave.procedureCycles,
+          sessionJourney: leadToSave.sessionJourney, viewedTreatments: leadToSave.viewedTreatments
+        });
+        if (!updated) return res.status(409).json({success:false,error:'O contato foi excluído durante a operação. Envie novamente.'});
+      }
 
       // Push lead to Kommo CRM API
-      pushLeadToKommo(leadToSave).then(async (kommoResult) => {
+      if (!leadToSave.kommoLeadId) pushLeadToKommo(leadToSave).then(async (kommoResult) => {
         if (kommoResult && kommoResult.kommoLeadId) {
-          const freshLeads = await readLeads();
-          const target = freshLeads.find((l) => l.id === leadToSave.id);
-          if (target) {
-            target.kommoLeadId = kommoResult.kommoLeadId;
-            target.kommoStatusId = '105149571';
-            await writeLeads(freshLeads);
-          }
+          await requireLeadDatabase().query(
+            'UPDATE nido_leads SET kommo_lead_id=? WHERE id=? AND deleted_at IS NULL AND (kommo_lead_id IS NULL OR kommo_lead_id=?)',
+            [String(kommoResult.kommoLeadId),leadToSave.id,String(kommoResult.kommoLeadId)]);
         }
       }).catch((err) => {
         console.warn('[Async Kommo Lead Sync Warning]', err);
@@ -1040,6 +1055,8 @@ async function startServer() {
             currentLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
             adsSyncedCount++;
           }
+          const entry = currentLeads[existingIdx];
+          await updateLeadFields(entry.id, {status:entry.status,serviceInterest:entry.serviceInterest,notes:entry.notes,metaLeadSent:entry.metaLeadSent,metaLeadSentAt:entry.metaLeadSentAt});
         } else {
           // Add new lead
           const newLead: StoredLead = {
@@ -1066,6 +1083,7 @@ async function startServer() {
             updatedAt: new Date().toISOString()
           };
 
+          await insertLead(newLead);
           currentLeads.unshift(newLead);
           importedCount++;
           if (isQualified && syncToAds) {
@@ -1074,7 +1092,7 @@ async function startServer() {
         }
       }
 
-      await writeLeads(currentLeads);
+
 
       return res.json({
         success: true,
@@ -1118,7 +1136,8 @@ async function startServer() {
       if (metaLeadSentAt) leads[index].metaLeadSentAt = metaLeadSentAt;
       leads[index].updatedAt = new Date().toISOString();
 
-      await writeLeads(leads);
+      const updated = await updateLeadFields(id, {status,notes,metaLeadSent,metaLeadSentAt});
+      if (!updated) return res.status(404).json({success:false,error:'Lead não encontrado'});
       return res.json({ success: true, lead: leads[index] });
     } catch (err: unknown) {
       console.error('[Update Lead Error]', err);
@@ -1258,7 +1277,7 @@ async function startServer() {
 
       const leads = await readLeads();
       leads.unshift(newLead);
-      await writeLeads(leads);
+      await insertLead(newLead);
 
       return res.status(201).json({ success: true, lead: newLead });
     } catch (err: unknown) {
@@ -1272,17 +1291,7 @@ async function startServer() {
     try {
       const { id } = req.params;
 
-      if (dbPool) {
-        try {
-          await dbPool.query('DELETE FROM nido_leads WHERE id = ?', [id]);
-        } catch (dbErr) {
-          console.error('[MySQL Delete Error]', dbErr);
-        }
-      }
-
-      let leads = await readLeads();
-      leads = leads.filter((l) => l.id !== id);
-      await writeLeads(leads);
+      await kommoRepo.remove(String(id));
 
       return res.json({ success: true, message: 'Lead excluído com sucesso' });
     } catch (err: unknown) {
@@ -1313,343 +1322,22 @@ async function startServer() {
 
   app.post('/api/integrations/kommo/webhook', async (req: Request, res: Response) => {
     try {
-      const payload = req.body || {};
-      
-      // Store recent webhook history for diagnosis
-      try {
-        const logFile = path.resolve(DATA_DIR, 'kommo_webhook_log.json');
-        const existingLogs = fs.existsSync(logFile) ? JSON.parse(await fsp.readFile(logFile, 'utf-8') || '[]') : [];
-        existingLogs.unshift({ timestamp: new Date().toISOString(), body: payload });
-        if (existingLogs.length > 20) existingLogs.pop();
-        await fsp.writeFile(logFile, JSON.stringify(existingLogs, null, 2), 'utf-8');
-      } catch (logErr) {
-        console.error('Error logging kommo webhook:', logErr);
-      }
-
-      console.log('[Kommo Webhook Received]', JSON.stringify(payload).slice(0, 500));
-
-      // Kommo sends data nested under leads[status], leads[add], leads[update]
-      let eventItems: any[] = [];
-      const leadsContainer = payload.leads || payload;
-      if (leadsContainer.status) {
-        eventItems = Array.isArray(leadsContainer.status) ? leadsContainer.status : Object.values(leadsContainer.status);
-      } else if (leadsContainer.update) {
-        eventItems = Array.isArray(leadsContainer.update) ? leadsContainer.update : Object.values(leadsContainer.update);
-      } else if (leadsContainer.add) {
-        eventItems = Array.isArray(leadsContainer.add) ? leadsContainer.add : Object.values(leadsContainer.add);
-      } else if (payload.lead) {
-        eventItems = [payload.lead];
-      } else if (Array.isArray(payload)) {
-        eventItems = payload;
-      }
-
-      if (eventItems.length === 0) {
-        // Return 200 immediately to acknowledge ping/handshake
-        return res.status(200).json({ success: true, message: 'Webhook received (no lead updates)' });
-      }
-
-      const allLeads = await readLeads();
-      let updatedCount = 0;
-
-      for (const item of eventItems as any[]) {
-        if (!item) continue;
-
-        const kommoLeadId = String(item.id || '');
-        const kommoStatusId = String(item.status_id || '');
-        const kommoStatusName = String(item.status_name || item.pipeline_name || '').toLowerCase();
-        const leadName = String(item.name || '').trim();
-        const isDeleted = item.is_deleted === true || item.is_deleted === 'true' || item.deleted === true || String(item.action || '').toLowerCase().includes('delete');
-
-        if (isDeleted) {
-          const initialLen = allLeads.length;
-          const filtered = allLeads.filter((l: any) => l.kommoLeadId !== kommoLeadId);
-          if (filtered.length < initialLen) {
-            allLeads.length = 0;
-            allLeads.push(...filtered);
-            updatedCount++;
-          }
-          continue;
-        }
-
-        // Map status based on name or known stage keywords from all Kommo pipelines
-        let mappedStatus: 'novo' | 'em_contato' | 'agendado' | 'compareceu' | 'convertido' | 'perdido' | null = null;
-
-        if (
-          kommoStatusName.includes('ganho') || 
-          kommoStatusName.includes('venda ganha') || 
-          kommoStatusName.includes('venda realizada') || 
-          kommoStatusName.includes('convertid') || 
-          kommoStatusName.includes('fechado - ganho') || 
-          kommoStatusName.includes('fechado ganho')
-        ) {
-          mappedStatus = 'convertido';
-        } else if (kommoStatusName.includes('compareceu') || kommoStatusName.includes('presenca')) {
-          mappedStatus = 'compareceu';
-        } else if (kommoStatusName.includes('agend') || kommoStatusName.includes('marcad') || kommoStatusName.includes('consulta')) {
-          mappedStatus = 'agendado';
-        } else if (
-          kommoStatusName.includes('negocia') || 
-          kommoStatusName.includes('follow up') || 
-          kommoStatusName.includes('follow-up') || 
-          kommoStatusName.includes('oferta') || 
-          kommoStatusName.includes('contato') || 
-          kommoStatusName.includes('qualifica') || 
-          kommoStatusName.includes('organizar')
-        ) {
-          mappedStatus = 'em_contato';
-        } else if (kommoStatusName.includes('perdid') || kommoStatusName.includes('cancelad') || kommoStatusName.includes('desist')) {
-          mappedStatus = 'perdido';
-        } else if (kommoStatusName.includes('novo') || kommoStatusName.includes('contato inicial')) {
-          mappedStatus = 'novo';
-        }
-
-        // Search for matching lead in our stored leads:
-        // 1. By stored kommoLeadId
-        // 2. By clean phone number if available
-        // 3. By exact or fuzzy name match
-        let targetIndex = allLeads.findIndex((l: any) => l.kommoLeadId === kommoLeadId);
-
-        if (targetIndex === -1 && leadName) {
-          const cleanSearchName = leadName.toLowerCase();
-          targetIndex = allLeads.findIndex((l) => {
-            const storedName = (l.name || '').toLowerCase();
-            return storedName === cleanSearchName || (storedName.length > 3 && cleanSearchName.includes(storedName));
-          });
-        }
-
-        if (targetIndex !== -1 && mappedStatus) {
-          allLeads[targetIndex].status = mappedStatus;
-          allLeads[targetIndex].kommoLeadId = kommoLeadId;
-          allLeads[targetIndex].kommoStatusId = kommoStatusId;
-          allLeads[targetIndex].updatedAt = new Date().toISOString();
-          
-          if (mappedStatus === 'agendado' || mappedStatus === 'compareceu' || mappedStatus === 'convertido') {
-            allLeads[targetIndex].metaLeadSent = true;
-            allLeads[targetIndex].metaLeadSentAt = new Date().toISOString();
-          }
-
-          updatedCount++;
-        }
-        // Leads externos nascidos no Kommo NÃO são adicionados na tabela do site para manter o CRM do site 100% puro
-      }
-
-      if (updatedCount > 0) {
-        await writeLeads(allLeads);
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: `${updatedCount} lead(s) atualizado(s) via Kommo Webhook`,
-        updatedCount
-      });
-    } catch (err: unknown) {
-      console.error('[Kommo Webhook Error]', err);
-      // Always return 200 to Kommo so it does not disable the webhook retry mechanism
-      return res.status(200).json({ success: false, error: 'Erro interno ao processar webhook' });
+      const result = await receiveKommoWebhook({repo:kommoRepo,request:kommoRequest,payload:req.body || {}});
+      return res.json({success:true,...result});
+    } catch (error) {
+      console.error('[Kommo Webhook Error]', error instanceof Error ? error.message : 'Unknown error');
+      return res.status(503).json({success:false,error:'Não foi possível persistir o webhook. Tente novamente.'});
     }
   });
 
-  // Calibrate Meta Ads & Google Ads from qualified Kommo leads without polluting the site CRM
   app.get('/api/integrations/kommo/sync', async (_req: Request, res: Response) => {
     try {
-      if (!KOMMO_TOKEN) {
-        return res.status(400).json({ error: 'Token do Kommo não configurado.' });
-      }
-
-      // Fetch most recently updated leads from Kommo (with embedded contacts)
-      const kommoRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/leads?order[updated_at]=desc&with=contacts&limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${KOMMO_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!kommoRes.ok) {
-        const errorText = await kommoRes.text();
-        return res.status(kommoRes.status).json({ error: `Kommo API error: ${errorText}` });
-      }
-
-      const kommoData = await kommoRes.json() as any;
-      const kommoLeads = kommoData?._embedded?.leads || [];
-
-      // Collect all contact IDs from recent Kommo leads to batch query their phones
-      const allContactIds: number[] = [];
-      for (const kl of kommoLeads) {
-        for (const c of kl._embedded?.contacts || []) {
-          if (c.id && !allContactIds.includes(c.id)) {
-            allContactIds.push(c.id);
-          }
-        }
-      }
-
-      // Map contactId -> phone numbers
-      const contactPhoneMap = new Map<number, string[]>();
-      if (allContactIds.length > 0) {
-        try {
-          const idsParam = allContactIds.slice(0, 40).map((id) => `id[]=${id}`).join('&');
-          const contactsRes = await fetch(`https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4/contacts?${idsParam}`, {
-            headers: {
-              'Authorization': `Bearer ${KOMMO_TOKEN}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          if (contactsRes.ok) {
-            const contactsData = await contactsRes.json() as any;
-            const fetchedContacts = contactsData?._embedded?.contacts || [];
-            for (const fc of fetchedContacts) {
-              const phones: string[] = [];
-              for (const cf of fc.custom_fields_values || []) {
-                if (cf.field_code === 'PHONE') {
-                  for (const v of cf.values || []) {
-                    const clean = String(v.value || '').replace(/\D/g, '');
-                    if (clean.length >= 8) phones.push(clean);
-                  }
-                }
-              }
-              contactPhoneMap.set(fc.id, phones);
-            }
-          }
-        } catch (fetchContactsErr) {
-          console.warn('[Kommo Contacts Batch Fetch Warning]', fetchContactsErr);
-        }
-      }
-
-      // Pipelines permitidos: Funil de Vendas (13625351) e BLACK FRIDAY (14680687)
-      // EXCLUÍDO TOTALMENTE: INSCRIÇAO MÉTODO ESPELHO (14692211)
-      const EXCLUDED_PIPELINE_IDS = [14692211];
-
-      // Status mapping dictionary based on exact pipeline status IDs
-      const STATUS_ID_MAP: Record<number, { status: string; label: string; isQualified: boolean }> = {
-        // Funil de Vendas (13625351)
-        105149571: { status: 'novo', label: 'Etapa de leads de entrada', isQualified: false },
-        105149575: { status: 'em_contato', label: 'Qualificação', isQualified: false },
-        105149579: { status: 'em_contato', label: 'Organizar Funil', isQualified: false },
-        105149583: { status: 'em_contato', label: 'Em negociação', isQualified: false },
-        105149587: { status: 'agendado', label: 'Agendamento', isQualified: true },
-        105480591: { status: 'compareceu', label: 'Compareceu', isQualified: true },
-        105480595: { status: 'convertido', label: 'Venda Realizada', isQualified: true },
-        105480599: { status: 'em_contato', label: 'Follow Up 24hrs', isQualified: false },
-        105480603: { status: 'em_contato', label: 'Follow Up 48hrs', isQualified: false },
-        105480607: { status: 'em_contato', label: 'Follow Up 72hrs', isQualified: false },
-        105480611: { status: 'em_contato', label: 'Follow Up 7D', isQualified: false },
-        105480615: { status: 'em_contato', label: 'Follow Up 14D', isQualified: false },
-        105480619: { status: 'em_contato', label: 'Follow Up 30D', isQualified: false },
-        // BLACK FRIDAY (14680687)
-        113434019: { status: 'novo', label: 'Etapa de leads de entrada', isQualified: false },
-        113434023: { status: 'novo', label: 'Contato inicial', isQualified: false },
-        113434027: { status: 'em_contato', label: 'Oferta feita', isQualified: false },
-        113434031: { status: 'em_contato', label: 'Negociação', isQualified: false },
-        // Global Win / Loss
-        142: { status: 'convertido', label: 'Fechado - ganho / Venda ganha', isQualified: true },
-        143: { status: 'perdido', label: 'Fechado - perdido', isQualified: false },
-        // Legacy / Additional pipeline statuses
-        113223647: { status: 'novo', label: 'Leads de entrada', isQualified: false },
-        113223651: { status: 'novo', label: 'Nome / Entrada', isQualified: false },
-        113223655: { status: 'em_contato', label: 'Contato', isQualified: false },
-        113223659: { status: 'agendado', label: 'Agendado', isQualified: true },
-        113223663: { status: 'convertido', label: 'Ganho', isQualified: true }
-      };
-
-      const siteLeads = await readLeads();
-      let adsCalibratedCount = 0;
-      let siteLeadsUpdatedCount = 0;
-
-      // Keep track of which site lead was already updated by a newer Kommo lead
-      const updatedSiteLeadMap = new Map<string, number>();
-
-      for (const kLead of kommoLeads) {
-        if (EXCLUDED_PIPELINE_IDS.includes(kLead.pipeline_id)) {
-          continue;
-        }
-
-        const kId = String(kLead.id);
-        const mapped = STATUS_ID_MAP[kLead.status_id];
-        const isQualified = mapped ? mapped.isQualified : false;
-        const kUpdatedAt = Number(kLead.updated_at) || 0;
-
-        if (isQualified) {
-          adsCalibratedCount++;
-        }
-
-        // Match with existing site lead:
-        // 1. Exact kommoLeadId match
-        // 2. OR if lead has no kommoLeadId yet, match by clean phone number or email
-        let existingIdx = siteLeads.findIndex((l) => l.kommoLeadId && l.kommoLeadId === kId);
-
-        if (existingIdx === -1) {
-          const contactList = kLead._embedded?.contacts || [];
-          for (const c of contactList) {
-            if (existingIdx !== -1) break;
-            const phones = contactPhoneMap.get(c.id) || [];
-            for (const cleanKPhone of phones) {
-              existingIdx = siteLeads.findIndex((sl) => {
-                // Apenas vincula se o lead do site ainda NÃO tem kommoLeadId ou se for o mesmo
-                if (sl.kommoLeadId && sl.kommoLeadId !== kId) return false;
-                const cleanSlPhone = String(sl.phone || '').replace(/\D/g, '');
-                return cleanSlPhone.length >= 8 && cleanKPhone.length >= 8 && (cleanSlPhone.endsWith(cleanKPhone.slice(-8)) || cleanKPhone.endsWith(cleanSlPhone.slice(-8)));
-              });
-              if (existingIdx !== -1) break;
-            }
-          }
-        }
-
-        if (existingIdx !== -1) {
-          const targetLeadId = siteLeads[existingIdx].id;
-          const prevTimestamp = updatedSiteLeadMap.get(targetLeadId) || 0;
-
-          // Only apply if this Kommo lead update is newer than any previous one processed
-          if (kUpdatedAt >= prevTimestamp) {
-            updatedSiteLeadMap.set(targetLeadId, kUpdatedAt);
-
-            if (kLead.is_deleted) {
-              // Se foi excluído no Kommo, remove do CRM do site permanentemente
-              siteLeads.splice(existingIdx, 1);
-              siteLeadsUpdatedCount++;
-            } else if (mapped) {
-              siteLeads[existingIdx].status = mapped.status;
-              siteLeads[existingIdx].kommoLeadId = kId;
-              siteLeads[existingIdx].kommoStatusId = String(kLead.status_id);
-              siteLeads[existingIdx].updatedAt = new Date().toISOString();
-              if (isQualified) {
-                siteLeads[existingIdx].metaLeadSent = true;
-                siteLeads[existingIdx].metaLeadSentAt = new Date().toISOString();
-              }
-              siteLeadsUpdatedCount++;
-            }
-          }
-        }
-      }
-
-      // Salva os leads e garante sincronia com o banco MySQL
-      await writeLeads(siteLeads);
-      if (isDbReady && dbPool) {
-        try {
-          const currentIds = siteLeads.map((l) => l.id);
-          if (currentIds.length > 0) {
-            const placeholders = currentIds.map(() => '?').join(',');
-            await dbPool.query(`DELETE FROM nido_leads WHERE id NOT IN (${placeholders})`, currentIds);
-          } else {
-            await dbPool.query('DELETE FROM nido_leads');
-          }
-        } catch (dbDelErr) {
-          console.error('[MySQL Purge Deleted Leads Error]', dbDelErr);
-        }
-      }
-
-      res.setHeader('Cache-Control', 'no-store');
-      return res.json({
-        version: 'nido-crm-diag-v1',
-        fetchedCount: kommoLeads.length,
-        idsSample: kommoLeads.slice(0, 3).map((l: any) => ({ id: l.id, statusId: l.status_id, pipelineId: l.pipeline_id })),
-        siteLeadCount: siteLeads.length,
-        success: true,
-        message: `${adsCalibratedCount} leads qualificados do Kommo calibrados para Meta/Google Ads. ${siteLeadsUpdatedCount} leads do site atualizados.`,
-        adsCalibratedCount,
-        siteLeadsUpdatedCount
-      });
-    } catch (err: unknown) {
-      console.error('[Kommo Direct Pull Error]', err);
-      return res.status(500).json({ error: 'Erro ao calibrar com a API do Kommo.' });
+      const result = await synchronizeKommo({repo:kommoRepo,request:kommoRequest});
+      return res.json({success:true,...result,siteLeadsUpdatedCount:result.updatedCount,
+        message:`${result.updatedCount} lead(s) atualizado(s) do Kommo. A sincronização de status não envia eventos para anúncios.`});
+    } catch (error) {
+      console.error('[Kommo Sync Error]', error instanceof Error ? error.message : 'Unknown error');
+      return res.status(503).json({success:false,version:CRM_VERSION,error:'Sincronização incompleta: verifique a conexão com MySQL e Kommo.'});
     }
   });
 
@@ -1776,3 +1464,4 @@ async function startServer() {
 }
 
 startServer();
+

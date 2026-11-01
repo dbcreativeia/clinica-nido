@@ -132,8 +132,9 @@ export const AdminCRMPage: React.FC = () => {
     setIsLoading(true);
     try {
       // Add timestamp to prevent browser HTTP caching of GET /api/leads
-      const res = await fetch(`/api/leads?_t=${Date.now()}`);
+      const res = await fetch(`/api/leads?_t=${Date.now()}`, {cache: 'no-store'});
       const data = await res.json();
+      if (!res.ok || !data.success || !Array.isArray(data.leads)) throw new Error(data.error || 'Erro ao carregar contatos');
       if (data.success && Array.isArray(data.leads)) {
         setLeads(data.leads);
         if (showToast) {
@@ -300,6 +301,7 @@ export const AdminCRMPage: React.FC = () => {
         method: 'DELETE'
       });
       const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Não foi possível excluir o contato');
       if (data.success) {
         setLeads((prev) => prev.filter((l) => l.id !== leadId));
         if (selectedLead && selectedLead.id === leadId) {
@@ -310,6 +312,7 @@ export const AdminCRMPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Error deleting lead:', err);
+      setActionFeedback(err instanceof Error ? err.message : 'Erro ao excluir contato.');
     } finally {
       setLeadToDelete(null);
     }
@@ -716,8 +719,14 @@ export const AdminCRMPage: React.FC = () => {
               onClick={async () => {
                 setIsLoading(true);
                 try {
-                  await fetch('/api/integrations/kommo/sync').catch(() => {});
-                  await fetchLeads(true);
+                  const response = await fetch(`/api/integrations/kommo/sync?_t=${Date.now()}`, {cache:'no-store'});
+                  const result = await response.json();
+                  if (!response.ok || !result.success) throw new Error(result.error || 'Falha ao sincronizar com Kommo.');
+                  await fetchLeads(false);
+                  setActionFeedback(result.message || 'Sincronização concluída.');
+                  setTimeout(() => setActionFeedback(null), 5000);
+                } catch (error) {
+                  setActionFeedback(error instanceof Error ? error.message : 'Erro de conexão ao sincronizar.');
                 } finally {
                   setIsLoading(false);
                 }
@@ -734,9 +743,9 @@ export const AdminCRMPage: React.FC = () => {
               onClick={async () => {
                 setIsLoading(true);
                 try {
-                  const res = await fetch('/api/integrations/kommo/sync');
+                  const res = await fetch(`/api/integrations/kommo/sync?_t=${Date.now()}`, {cache:'no-store'});
                   const data = await res.json();
-                  if (data.success) {
+                  if (res.ok && data.success) {
                     setActionFeedback(data.message);
                     setTimeout(() => setActionFeedback(null), 4000);
                     await fetchLeads();
@@ -1698,3 +1707,4 @@ export const AdminCRMPage: React.FC = () => {
     </div>
   );
 };
+
