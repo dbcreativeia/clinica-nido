@@ -4,7 +4,9 @@ O código editável permanece no Google AI Studio e no repositório `dbcreativei
 
 ## Publicação
 
-Após enviar um commit para `main`, a hospedagem verifica atualizações a cada cinco minutos. O trabalho cron preserva o arquivo legado de leads, aplica o Git, executa TypeScript, os testes do CRM e o build e, somente se esses comandos passarem, executa `scripts/crm-restart.cjs`.
+Após enviar um commit para `main`, a hospedagem verifica atualizações a cada cinco minutos. O trabalho cron preserva o arquivo legado de leads, aplica o Git, verifica a sintaxe do servidor, executa os testes do CRM e o build e, somente se esses comandos passarem, executa `scripts/crm-restart.cjs`.
+
+A checagem completa de tipos TypeScript ocorre no GitHub e no AI Studio. A hospedagem usa `node --check server.ts`, pois pode não ter dependências de desenvolvimento instaladas. Um marcador de último deploy bem-sucedido permite nova tentativa automática se um build falhar.
 
 O reinício específico é necessário porque o LiteSpeed mantinha workers `lsnode` antigos mesmo depois de o código ser atualizado e de reinícios solicitados pelo painel. O script só sinaliza workers do mesmo usuário cujo diretório de trabalho corresponde exatamente à raiz desta aplicação.
 
