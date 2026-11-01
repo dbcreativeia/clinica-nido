@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { WhatsAppFloating } from './components/WhatsAppFloating';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import {LocationEntryPrompt} from './components/LocationEntryPrompt';
 import { ConsentBanner } from './components/ConsentBanner';
 import { LeadCaptureModal } from './components/LeadCaptureModal';
 import { HomePage } from './pages/HomePage';
@@ -87,6 +88,7 @@ function AppContent() {
       <WhatsAppFloating />
       <MobileBottomNav />
       <ConsentBanner />
+      <LocationEntryPrompt />
       <LeadCaptureModal />
     </div>
   );

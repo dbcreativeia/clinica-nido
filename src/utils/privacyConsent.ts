@@ -10,9 +10,10 @@ export function privacySubjectId():string {
  return id;
 }
 export function readCookiePreferences(){try{return readCookieChoice(localStorage.getItem(COOKIE_KEY));}catch{return null;}}
-export function hasCrmLocationConsent():boolean {
- try {const c=JSON.parse(localStorage.getItem(LOCATION_KEY)||'null');return c?.crmLocation===true && c.noticeVersion===NOTICE_VERSION && c.timestamp>0 && c.timestamp<=Date.now() && c.expiresAt>Date.now() && Date.now()-c.timestamp<CONSENT_DURATION_MS;}catch{return false;}
+export function readLocationPreferences(){
+ try {const c=JSON.parse(localStorage.getItem(LOCATION_KEY)||'null');return c && typeof c.crmLocation==='boolean' && c.noticeVersion===NOTICE_VERSION && c.timestamp>0 && c.timestamp<=Date.now() && c.expiresAt>Date.now() && Date.now()-c.timestamp<CONSENT_DURATION_MS?c:null;}catch{return null;}
 }
+export function hasCrmLocationConsent():boolean {return readLocationPreferences()?.crmLocation===true;}
 export async function flushPrivacyReceipts():Promise<void>{
  let pending:any[];try{pending=JSON.parse(localStorage.getItem(PENDING_KEY)||'[]');if(!Array.isArray(pending))return;}catch{return;}
  for(const receipt of pending){
