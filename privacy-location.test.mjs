@@ -19,3 +19,11 @@ test('an explicit entry permission captures GPS, while native denial records ref
  const e=environment();await requestCrmLocation();assert.equal(getCurrentVisitorLocation().latitude,-23.5);
  navigator.geolocation.getCurrentPosition=(_success,failure)=>failure();await requestCrmLocation();assert.equal(hasCrmLocationConsent(),false);assert.equal(e.session.has('nido_visitor_geo'),false);
 });
+
+test('native prompt does not record consent before permission and late approval cannot undo refusal',async()=>{
+ const {requestCrmLocation}=await import('./src/utils/locationPermission.ts');
+ const e=environment();let callback;navigator.geolocation.getCurrentPosition=success=>callback=success;
+ const pending=requestCrmLocation();assert.equal(hasCrmLocationConsent(),false);assert.equal(e.session.size,0);
+ saveLocationPreference(false);callback({coords:{latitude:-23.5,longitude:-46.6,accuracy:10}});
+ assert.equal(await pending,null);assert.equal(hasCrmLocationConsent(),false);assert.equal(e.session.size,0);
+});

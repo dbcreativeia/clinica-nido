@@ -12,7 +12,7 @@ function app(saved){
 }
 test('actual banner makes accept/refuse equivalent, grants optional cookies without requesting GPS',()=>{
  const a=app(),tree=a.render(),buttons=a.nodes(tree).filter(n=>n.type==='button');
- const accept=buttons.find(n=>a.text(n)==='Aceitar todos os cookies opcionais'),refuse=buttons.find(n=>a.text(n)==='Recusar opcionais');
+ const accept=buttons.find(n=>a.text(n)==='Aceitar opcionais'),refuse=buttons.find(n=>a.text(n)==='Recusar opcionais');
  assert.equal(accept.props.className,refuse.props.className);accept.props.onClick();
  const saved=JSON.parse(a.values.get('nido_cookie_consent'));assert.equal(saved.meta,true);assert.equal(saved.analytics,true);assert.equal(saved.geo,undefined);assert.equal(a.gps(),0);assert.equal(a.render(),null);
 });
