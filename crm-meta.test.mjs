@@ -12,7 +12,7 @@ import {createCrmMetaQueue} from './crm-meta.mjs';
 function database(){
  const rows=new Map();const original={...lead,procedure_cycles:lead.procedureCycles,attribution_context:JSON.stringify(lead.attribution),meta_lead_sent:0};
  const pool={async query(sql,args=[]){
-  if(sql.startsWith('SELECT * FROM nido_leads'))return [[original]];
+  if(sql.startsWith('SELECT * FROM nido_leads'))return [original.deleted_at?[]:[original]];
   if(sql.startsWith('INSERT IGNORE')){if(!rows.has(args[0]))rows.set(args[0],{event_id:args[0],lead_id:args[1],cycle_id:args[2],payload:args[3],consent_expires_at:args[4],state:'pending',attempts:0,due:true,locked:false});return [{affectedRows:1}];}
   if(sql.startsWith('SELECT * FROM nido_meta_outbox'))return [[...rows.values()].filter(r=>r.state==='pending'&&r.due&&!r.locked).map(r=>({...r}))];
   if(sql.startsWith('SELECT id FROM nido_leads'))return [original.deleted_at?[]:[{id:original.id}]];
@@ -25,3 +25,5 @@ test('durable qualification survives duplicate webhooks and a worker restart',as
 test('failed or zero-ack delivery does not mark the lead sent and retries keep ID and event time',async()=>{for(const result of [{success:false},{success:true,events_received:0}]){const db=database();const bodies=[];const q=createCrmMetaQueue({...db,send:async b=>{bodies.push(b);return bodies.length===1?result:{success:true,events_received:1}}});await q.qualify(lead.id);await q.flush();assert.equal(db.original.meta_lead_sent,0);for(const r of db.rows.values())r.due=true;await q.flush();assert.deepEqual(bodies[0],bodies[1]);assert.equal(db.original.meta_lead_sent,1);}});
 test('two worker instances use a database lease to avoid simultaneous dispatch',async()=>{const db=database();let sends=0;const send=async()=>{sends++;return{success:true,events_received:1}};const q=createCrmMetaQueue({...db,send});await q.qualify(lead.id);await Promise.all([q.flush(),createCrmMetaQueue({...db,send}).flush()]);assert.equal(sends,1);});
 test('deleted lead or expired consent cancels pending delivery',async()=>{for(const kind of ['deleted','expired']){const db=database();let sends=0;const q=createCrmMetaQueue({...db,send:async()=>{sends++;return{success:true,events_received:1}}});await q.qualify(lead.id);if(kind==='deleted')db.original.deleted_at='deleted';else for(const r of db.rows.values())r.consent_expires_at=1;await q.flush();assert.equal(sends,0);assert.equal([...db.rows.values()][0].state,'skipped');}});
+
+test('latest marketing revocation skips a queued conversion before send',async()=>{const db=database();let allowed=true,sends=0;const q=createCrmMetaQueue({...db,isAllowed:async()=>allowed,send:async()=>{sends++;return {success:true,events_received:1}}});await q.qualify(lead.id);allowed=false;await q.flush();assert.equal(sends,0);assert.equal([...db.rows.values()][0].state,'skipped');});

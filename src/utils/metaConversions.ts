@@ -56,7 +56,7 @@ export function refreshMetaConsent(): void {
 export function captureMetaContext() {
   if (!hasMetaConsent()) return undefined;
   const consent = JSON.parse(localStorage.getItem('nido_cookie_consent') || 'null');
-  return {marketingConsent:true,consentAt:consent.timestamp,
+  return {marketingConsent:true,consentAt:consent.timestamp,consentSubjectId:consent.consentSubjectId,noticeVersion:consent.noticeVersion,
     expiresAt:Math.min(consent.expiresAt || consent.timestamp+180*86400000,consent.timestamp+180*86400000),
     fbp:getOrCreateFbp(),fbc:getOrCreateFbc(),eventSourceUrl:sanitizeEventUrl(window.location.href)};
 }

@@ -4,6 +4,7 @@
  */
 
 import { getStoredTrafficAttribution, initTrafficAttribution } from './trafficSource.ts';
+import {hasCrmLocationConsent} from './privacyConsent.ts';
 import { normalizeLocation } from '../../tracking-context.mjs';
 import { TREATMENTS } from '../data/treatments.ts';
 import { TECHNOLOGIES } from '../data/technologies.ts';
@@ -111,53 +112,19 @@ export function isIgnoredPath(pathname: string): boolean {
   return false;
 }
 
-export function requestBrowserLocation(): Promise<VisitorLocation | null> {
-  const fallbackLocation: VisitorLocation = {
-    city: 'Não informada',
-    state: 'Não informada',
-    neighborhood: 'Não informada'
-  };
-
-  if (typeof window === 'undefined' || !navigator.geolocation) {
-    clearVisitorLocation();
-    return Promise.resolve(null);
-  }
-
-  return new Promise((resolve) => {
-    try {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const locationObj: VisitorLocation = {
-            city: 'Não informada',
-            state: 'Não informada',
-            neighborhood: 'Não informada',
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-            ,geoConsent: true,
-            locationSource: 'browser_gps',
-            locationCapturedAt: new Date().toISOString(),
-            accuracy: pos.coords.accuracy
-          };
-
-          try {
-            sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(locationObj));
-          } catch {}
-          window.dispatchEvent(new CustomEvent('nido:location-changed'));
-          resolve(locationObj);
-        },
-        () => {
-          try {
-            sessionStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(fallbackLocation));
-          } catch {}
-          clearVisitorLocation();
-          resolve(null);
-        },
-        { timeout: 5000, enableHighAccuracy: true }
-      );
-    } catch {
-      clearVisitorLocation();
-      resolve(null);
-    }
+export function requestBrowserLocation(options: {storeInCrm?:boolean} = {}): Promise<VisitorLocation | null> {
+  const store=options.storeInCrm===true;
+  if (typeof window==='undefined' || !navigator.geolocation || (store&&!hasCrmLocationConsent())) return Promise.resolve(null);
+  return new Promise(resolve=>{
+    try {navigator.geolocation.getCurrentPosition(pos=>{
+      const loc:VisitorLocation={city:'Não informada',state:'Não informada',neighborhood:'Não informada',latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy,geoConsent:store&&hasCrmLocationConsent(),locationSource:'browser_gps',locationCapturedAt:new Date().toISOString()};
+      if(store&&hasCrmLocationConsent()){
+        try{sessionStorage.setItem(GEO_STORAGE_KEY,JSON.stringify(loc));}catch{}
+        window.dispatchEvent(new CustomEvent('nido:location-changed'));
+      }
+      resolve(loc);
+    },()=>{if(store)clearVisitorLocation();resolve(null);},{timeout:10000,enableHighAccuracy:false,maximumAge:0});}
+    catch{if(store)clearVisitorLocation();resolve(null);}
   });
 }
 
@@ -167,10 +134,7 @@ export function clearVisitorLocation(): void {
 
 export function getCurrentVisitorLocation(): VisitorLocation {
   try {
-    const consent = JSON.parse(localStorage.getItem('nido_cookie_consent') || '{}');
-    const age = Date.now() - consent.timestamp;
-    if (consent.geo !== true || !Number.isFinite(age) || age < 0 || age > CONSENT_DURATION_MS ||
-      (consent.expiresAt && Date.now() > consent.expiresAt)) {
+    if (!hasCrmLocationConsent()) {
       clearVisitorLocation();
       return normalizeLocation({});
     }

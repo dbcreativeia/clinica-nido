@@ -32,7 +32,7 @@ export const PrivacyPage: React.FC = () => {
               Política de <em className="italic text-[#44342E]">Privacidade</em>
             </h1>
             <p className="text-xs text-[#8C7359] font-normal">
-              Última atualização: Setembro de 2026 • Clínica Nidô Estética Avançada
+              Última atualização: 1 de novembro de 2026 • Clínica Nidô Estética Avançada
             </p>
           </div>
 
@@ -54,11 +54,13 @@ export const PrivacyPage: React.FC = () => {
                 Limitamos a coleta estritamente ao mínimo indispensável para o fornecimento dos nossos serviços:
               </p>
               <ul className="space-y-1.5 list-disc pl-5">
-                <li><strong>Dados de Contato Inicial:</strong> Nome e telefone/WhatsApp, fornecidos voluntariamente pelo usuário para retorno de dúvidas e solicitação de horários de avaliação.</li>
-                <li><strong>Dados Técnicos de Navegação:</strong> Informações anônimas de dispositivo, páginas acessadas e cliques em links de atendimento (via cookies analíticos, mediante seu consentimento).</li>
+                <li><strong>Dados de Contato Inicial:</strong> Nome, e-mail e telefone/WhatsApp, fornecidos voluntariamente pelo usuário para retorno de dúvidas e solicitação de horários de avaliação.</li>
+                <li><strong>Dados Técnicos de Navegação:</strong> Informações de dispositivo, páginas acessadas, cliques e tempo ativo, mediante autorização de Analytics. Identificadores de visitante e sessão podem relacionar a navegação ao contato, portanto esses registros não são necessariamente anônimos.</li>
+                <li><strong>Mensuração de anúncios:</strong> mediante autorização específica de Publicidade, compartilhamos com a Meta eventos institucionais, identificadores de clique/cookies e dados técnicos. Nome, e-mail e telefone fornecidos no formulário podem ser enviados com hash para correspondência. Hash é uma medida de proteção, não anonimização.</li>
+                <li><strong>Localização:</strong> GPS é opcional e solicitado em Como chegar. Utilização temporária para rota e armazenamento de coordenadas no CRM são escolhas distintas. Coordenadas só são associadas ao contato ou à navegação da clínica quando você autoriza especificamente esse armazenamento.</li>
               </ul>
               <p className="p-3.5 rounded-xl bg-[#EFE6DC] border border-[#E5DAD0] text-xs text-[#44342E] font-normal">
-                <strong className="text-[#241E1B] font-semibold">Não coletamos dados médicos sensíveis em formulários abertos na web.</strong> Quaisquer dados clínicos e de saúde são coletados presencialmente no consultório durante a anamnese médica ou biomédica, sob estrito sigilo profissional.
+                <strong className="text-[#241E1B] font-semibold">Não envie exames, prontuários ou informações detalhadas de saúde pelos formulários públicos.</strong> O interesse selecionado no atendimento pode revelar informações pessoais e é tratado para responder à solicitação. Os eventos enviados pela integração de publicidade usam descrições institucionais, sem nomes de tratamentos, mensagens ou coordenadas do paciente.
               </p>
             </section>
 
@@ -67,7 +69,7 @@ export const PrivacyPage: React.FC = () => {
                 3. Finalidade e Base Legal do Tratamento
               </h2>
               <p>
-                Os dados de contato fornecidos são tratados exclusivamente com base no seu consentimento (art. 7º, I da LGPD) e na execução de procedimentos preliminares a pedido do titular (art. 7º, V da LGPD), única e exclusivamente para responder às solicitações iniciadas pelo visitante.
+                Tratamos os dados de contato para responder à solicitação e realizar procedimentos preliminares a pedido do visitante (art. 7º, V da LGPD), conforme a natureza do dado e do atendimento. As finalidades opcionais de Analytics, Publicidade e armazenamento de localização dependem de autorizações próprias. O consentimento para uma finalidade não autoriza automaticamente as outras. Você pode solicitar atendimento mesmo recusando cookies opcionais e GPS.
               </p>
             </section>
 
@@ -76,7 +78,7 @@ export const PrivacyPage: React.FC = () => {
                 4. Compartilhamento de Dados
               </h2>
               <p>
-                A Clínica Nidô <strong>não comercializa, não aluga e não compartilha</strong> suas informações pessoais com terceiros para fins publicitários. O compartilhamento ocorre apenas com prestadores de tecnologia essenciais à operação (como provedor de hospedagem e mensageria segura do WhatsApp), sujeitos a cláusulas de confidencialidade.
+                Usamos prestadores de hospedagem, CRM (Kommo) e mensageria (WhatsApp) para atender às solicitações. Com autorização de Analytics, utilizamos também Google Analytics. Com autorização de Publicidade, a Meta recebe eventos e identificadores para mensurar anúncios e fazer correspondência. Esses provedores podem tratar dados fora do Brasil, conforme seus serviços e políticas. Não enviamos pela integração de anúncios as mensagens de atendimento, nomes de tratamentos ou coordenadas do visitante. Ao abrir Google Maps, Waze ou Uber, você utiliza serviços externos sujeitos às políticas deles.
               </p>
             </section>
 
@@ -89,9 +91,10 @@ export const PrivacyPage: React.FC = () => {
               </p>
             </section>
 
+            <section className="space-y-2"><h2 className="font-serif text-xl font-medium text-[#241E1B]">Conservação e retirada da autorização</h2><p>As preferências de cookies e de armazenamento de localização valem por até 180 dias, sem impedir sua alteração a qualquer momento. Coordenadas no navegador ficam durante a sessão e por até 24 horas; se enviadas mediante autorização, são registradas no CRM ou Analytics da clínica. A revogação impede novas coletas controladas por essa autorização e não apaga automaticamente registros já recebidos. Você pode pedir acesso, correção e exclusão pelos canais abaixo, observadas as hipóteses de conservação previstas em lei. Guardamos recibos de escolhas por até 12 meses para documentar as autorizações e retiradas.</p><button type="button" onClick={()=>window.dispatchEvent(new CustomEvent('nido:open-cookie-settings'))} className="underline font-semibold cursor-pointer">Revisar minhas preferências de privacidade</button></section>
             <section className="space-y-2">
               <h2 className="font-serif text-xl font-medium text-[#241E1B]">
-                6. Contato com o Encarregado de Dados (DPO)
+                6. Canal de privacidade e exercício de direitos
               </h2>
               <p>
                 Para exercer seus direitos ou esclarecer qualquer dúvida sobre o tratamento dos seus dados, entre em contato diretamente pelo WhatsApp oficial <strong>{WHATSAPP_DISPLAY}</strong> ou presencialmente em nossa clínica na Água Branca, São Paulo.

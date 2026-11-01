@@ -18,6 +18,7 @@ import { PrivacyPage } from './pages/PrivacyPage';
 import { CookiesPage } from './pages/CookiesPage';
 import { AdminCRMPage } from './pages/AdminCRMPage';
 
+import {trackGooglePageView} from './utils/googleConsent';
 import { trackMetaPageView } from './utils/metaConversions';
 import { initTrafficAttribution } from './utils/trafficSource';
 import { recordRouteNavigation } from './utils/internalAnalytics';
@@ -46,6 +47,7 @@ function AppContent() {
     initTrafficAttribution();
     if (window.location.hash !== '#admin') {
       trackMetaPageView(pathname);
+      trackGooglePageView();
       recordRouteNavigation(pathname, document.title || pathname);
     }
   }, [pathname]);

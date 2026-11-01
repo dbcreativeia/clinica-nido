@@ -1,3 +1,4 @@
+import {readCookiePreferences} from './privacyConsent';
 import { trackMetaContact, trackMetaEvent } from './metaConversions';
 
 // Custom analytics tracking helper compliant with LGPD, GA4, and Meta CAPI
@@ -17,8 +18,7 @@ declare global {
 
 export function trackEvent(eventName: string, payload?: TrackingPayload): void {
   // Check if user has given consent for analytics (strict LGPD: false until explicit consent)
-  const consentSetting = typeof localStorage !== 'undefined' ? localStorage.getItem('nido_cookie_consent') : null;
-  const isConsentGiven = consentSetting ? JSON.parse(consentSetting)?.analytics === true : false;
+  const isConsentGiven = typeof window !== 'undefined' && readCookiePreferences()?.analytics === true;
 
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[Analytics Event] ${eventName}:`, payload);

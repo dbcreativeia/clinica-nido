@@ -1,344 +1,49 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldCheck, MapPin, X, Lock, CheckCircle2, ChevronRight, Settings } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { requestBrowserLocation, clearVisitorLocation } from '../utils/internalAnalytics';
-import { initTrafficAttribution } from '../utils/trafficSource';
-import { trackMetaPageView, refreshMetaConsent } from '../utils/metaConversions';
+import React,{useEffect,useState} from 'react';
+import {ShieldCheck,X,Lock} from 'lucide-react';
+import {Link} from 'react-router-dom';
+import {trackGooglePageView,syncGoogleConsent} from '../utils/googleConsent';
+import {initTrafficAttribution} from '../utils/trafficSource';
+import {trackMetaPageView,refreshMetaConsent} from '../utils/metaConversions';
+import {readCookiePreferences,saveCookiePreferences,hasCrmLocationConsent,saveLocationPreference,flushPrivacyReceipts,privacyStorageChanged} from '../utils/privacyConsent';
 
-// Período de validade do consentimento segundo as boas práticas da LGPD (6 meses / 180 dias)
-const CONSENT_DURATION_MS = 180 * 24 * 60 * 60 * 1000;
-
-export const ConsentBanner: React.FC = () => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [showCustomize, setShowCustomize] = useState(false);
-  const [geoStatus, setGeoStatus] = useState<'idle' | 'prompting' | 'granted' | 'denied'>('idle');
-
-  // Default checkboxes to false for strict LGPD compliance
-  const [geoConsent, setGeoConsent] = useState(false);
-  const [analyticsConsent, setAnalyticsConsent] = useState(false);
-  const [metaConsent, setMetaConsent] = useState(false);
-
-  useEffect(() => {
-    // Permite que o usuário reabra suas preferências de cookies a qualquer momento pelo rodapé
-    const handleReopen = () => {
-      setShowCustomize(true);
-      setIsVisible(true);
-    };
-    window.addEventListener('nido:open-cookie-settings', handleReopen);
-
-    const saved = localStorage.getItem('nido_cookie_consent');
-    if (!saved) {
-      setIsVisible(true);
-    } else {
-      try {
-        const parsed = JSON.parse(saved);
-        const timestamp = typeof parsed.timestamp === 'number' ? parsed.timestamp : 0;
-        const isExpired = Date.now() - timestamp > CONSENT_DURATION_MS;
-
-        if (isExpired) {
-          // Após 6 meses, o consentimento expira e solicita renovação conforme a LGPD
-          setIsVisible(true);
-        } else {
-          // Dentro dos 6 meses: mantém o banner oculto e preserva as escolhas do usuário
-          setIsVisible(false);
-          if (parsed.geo) setGeoConsent(true);
-          if (parsed.analytics) setAnalyticsConsent(true);
-          if (parsed.meta) setMetaConsent(true);
-        }
-      } catch {
-        setIsVisible(true);
-      }
-    }
-
-    // Check if permission was already granted in browser
-    if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-        if (result.state === 'granted') {
-          setGeoStatus('granted');
-        } else if (result.state === 'denied') {
-          setGeoStatus('denied');
-        } else {
-          setGeoStatus('idle');
-        }
-      }).catch(() => {});
-    }
-
-    return () => {
-      window.removeEventListener('nido:open-cookie-settings', handleReopen);
-    };
-  }, []);
-
-  const handleTriggerGeo = async () => {
-    setGeoStatus('prompting');
-    // This action explicitly requests GPS; save the choice before collecting it.
-    const current = JSON.parse(localStorage.getItem('nido_cookie_consent') || '{}');
-    localStorage.setItem('nido_cookie_consent', JSON.stringify({...current,geo:true,timestamp:Date.now()}));
-    setGeoConsent(true);
-    try {
-      const loc = await requestBrowserLocation();
-      if (loc?.locationSource === 'browser_gps') {
-        setGeoStatus('granted');
-      } else {
-        setGeoStatus('denied');
-        setGeoConsent(false);
-        const saved = JSON.parse(localStorage.getItem('nido_cookie_consent') || '{}');
-        localStorage.setItem('nido_cookie_consent',JSON.stringify({...saved,geo:false}));
-      }
-    } catch {
-      setGeoStatus('denied');
-    }
-  };
-
-  const handleAcceptAll = async () => {
-    localStorage.setItem(
-      'nido_cookie_consent',
-      JSON.stringify({ 
-        necessary: true, 
-        geo: true, 
-        analytics: true, 
-        meta: true, 
-        timestamp: Date.now(),
-        expiresAt: Date.now() + CONSENT_DURATION_MS,
-        durationDays: 180,
-        lgpdVersion: '13.709/2018'
-      })
-    );
-    setGeoConsent(true);
-    setAnalyticsConsent(true);
-    setMetaConsent(true);
-    setIsVisible(false);
-
-    // Notify analytics tracker dynamically without requiring page reload
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nido:analytics-consent-changed', { detail: { analytics: true } }));
-    }
-
-    // Initialize marketing attribution cookies and fire single PageView now that consent is valid
-    try {
-      initTrafficAttribution();
-      trackMetaPageView();
-    } catch {}
-
-    await handleTriggerGeo();
-  };
-
-  const handleRejectNonEssential = () => {
-    clearVisitorLocation();
-    localStorage.setItem(
-      'nido_cookie_consent',
-      JSON.stringify({ 
-        necessary: true, 
-        geo: false, 
-        analytics: false, 
-        meta: false, 
-        timestamp: Date.now(),
-        expiresAt: Date.now() + CONSENT_DURATION_MS,
-        durationDays: 180,
-        lgpdVersion: '13.709/2018'
-      })
-    );
-    setGeoConsent(false);
-    setAnalyticsConsent(false);
-    setMetaConsent(false);
-
-    // Notify analytics tracker of consent revocation
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nido:analytics-consent-changed', { detail: { analytics: false } }));
-    }
-
-    refreshMetaConsent();
-    setIsVisible(false);
-  };
-
-  const handleSaveCustom = async () => {
-    if (!geoConsent) { clearVisitorLocation(); setGeoStatus('idle'); }
-    localStorage.setItem(
-      'nido_cookie_consent',
-      JSON.stringify({ 
-        necessary: true, 
-        geo: geoConsent, 
-        analytics: analyticsConsent, 
-        meta: metaConsent, 
-        timestamp: Date.now(),
-        expiresAt: Date.now() + CONSENT_DURATION_MS,
-        durationDays: 180,
-        lgpdVersion: '13.709/2018'
-      })
-    );
-    setIsVisible(false);
-
-    // Notify analytics tracker dynamically
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nido:analytics-consent-changed', { detail: { analytics: analyticsConsent } }));
-    }
-
-    refreshMetaConsent();
-    if (metaConsent) {
-      try {
-        initTrafficAttribution();
-        trackMetaPageView();
-      } catch {}
-    }
-
-    if (geoConsent) {
-      await handleTriggerGeo();
-    }
-  };
-
-  if (!isVisible) return null;
-
-  return (
-    <div data-analytics-ignore className="fixed bottom-0 left-0 right-0 z-50 bg-[#FFFFFF] border-t border-[#E5DAD0] shadow-2xl p-3 sm:p-5 text-[#241E1B] animate-in slide-in-from-bottom duration-200">
-      <div className="max-w-5xl mx-auto flex flex-col gap-2.5 sm:gap-3">
-        
-        {/* Header & Compact Close */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0] flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-4 h-4 text-[#8C7359]" />
-            </div>
-            <div>
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#8C7359] block leading-none">
-                Privacidade LGPD (Lei 13.709/18)
-              </span>
-              <h4 className="font-serif text-xs sm:text-base font-bold text-[#1F1916] leading-snug">
-                Cookies e Permissão de Geolocalização (GPS)
-              </h4>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setIsVisible(false)}
-            className="text-[#5C4B44] hover:text-[#1F1916] p-1 cursor-pointer transition-colors rounded-full hover:bg-[#FAF6F0] shrink-0"
-            aria-label="Fechar banner"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Compact Description & Quick Action Card */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4 text-[11px] sm:text-xs text-[#5C4B44]">
-          <p className="leading-relaxed">
-            Utilizamos cookies essenciais e solicitamos seu <strong>GPS</strong> para direcionar a rota de atendimento até nossa clínica na Água Branca/SP.
-          </p>
-
-          {/* GPS Quick Status Button */}
-          <button
-            type="button"
-            onClick={handleTriggerGeo}
-            className="shrink-0 bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] border border-[#E5DAD0] text-[10px] sm:text-xs font-bold py-1.5 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 self-start sm:self-auto"
-          >
-            <MapPin className="w-3.5 h-3.5 text-purple-700" />
-            <span>
-              {geoStatus === 'granted' ? '✅ GPS Ativado' : '📍 Solicitar GPS Nativo'}
-            </span>
-          </button>
-        </div>
-
-        {/* Customization Checkbox Panel */}
-        {showCustomize && (
-          <div className="p-3 bg-[#FAF6F0] rounded-xl border border-[#E5DAD0] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-[#1F1916] animate-in fade-in">
-            <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#E5DAD0]">
-              <div className="flex items-center gap-1.5 font-bold">
-                <Lock className="w-3.5 h-3.5 text-[#8C7359]" />
-                <span>Cookies Essenciais</span>
-              </div>
-              <span className="text-[9px] font-bold text-[#8C7359] bg-[#EFE6DC] px-1.5 py-0.5 rounded">
-                Obrigatório
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#E5DAD0]">
-              <div className="flex items-center gap-1.5 font-bold">
-                <MapPin className="w-3.5 h-3.5 text-purple-700" />
-                <span>Geolocalização / GPS</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={geoConsent}
-                onChange={(e) => setGeoConsent(e.target.checked)}
-                className="accent-[#44342E] w-3.5 h-3.5 cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#E5DAD0]">
-              <div className="flex items-center gap-1.5 font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5 text-blue-700" />
-                <span>Analytics Interno</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={analyticsConsent}
-                onChange={(e) => setAnalyticsConsent(e.target.checked)}
-                className="accent-[#44342E] w-3.5 h-3.5 cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#E5DAD0]">
-              <div className="flex items-center gap-1.5 font-bold">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Meta Pixel & Ads</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={metaConsent}
-                onChange={(e) => setMetaConsent(e.target.checked)}
-                className="accent-[#44342E] w-3.5 h-3.5 cursor-pointer"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Buttons Bar */}
-        <div className="flex flex-row items-center justify-between gap-2 pt-1 border-t border-[#E5DAD0]/60">
-          <Link to="/politica-de-privacidade" className="text-[10px] text-[#8C7359] font-medium hover:underline hidden sm:inline">
-            Política de Privacidade LGPD
-          </Link>
-
-          <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
-            {showCustomize ? (
-              <>
-                <button
-                  onClick={handleSaveCustom}
-                  className="flex-1 sm:flex-initial bg-[#44342E] hover:bg-[#5A453D] text-[#FFFFFF] py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-                >
-                  Salvar
-                </button>
-                <button
-                  onClick={() => setShowCustomize(false)}
-                  className="bg-[#FAF6F0] text-[#44342E] border border-[#E5DAD0] py-2 px-2.5 rounded-lg text-xs font-bold cursor-pointer"
-                >
-                  Voltar
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={handleAcceptAll}
-                  className="flex-1 sm:flex-initial bg-[#44342E] hover:bg-[#5A453D] text-[#FFFFFF] py-2 px-3 sm:px-4 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1"
-                >
-                  <span>Aceitar Todos & GPS</span>
-                  <ChevronRight className="w-3.5 h-3.5 opacity-80 hidden sm:inline" />
-                </button>
-                <button
-                  onClick={handleRejectNonEssential}
-                  className="bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] border border-[#E5DAD0] py-2 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
-                >
-                  Essenciais
-                </button>
-                <button
-                  onClick={() => setShowCustomize(true)}
-                  className="text-xs text-[#8C7359] hover:text-[#44342E] underline py-1 px-1.5 cursor-pointer font-bold transition-colors shrink-0"
-                >
-                  <Settings className="w-3.5 h-3.5 sm:hidden" />
-                  <span className="hidden sm:inline">Opções</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
+const choiceButtonClass='min-h-16 w-full rounded-xl border border-[#44342E] bg-white px-4 py-3 text-sm font-semibold text-[#44342E] hover:bg-[#FAF6F0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#44342E] cursor-pointer';
+export const ConsentBanner:React.FC=()=>{
+ const [visible,setVisible]=useState(false),[custom,setCustom]=useState(false);
+ const [analytics,setAnalytics]=useState(false),[meta,setMeta]=useState(false),[crmLocation,setCrmLocation]=useState(false),[error,setError]=useState('');
+ function syncChoices(){const c=readCookiePreferences();setAnalytics(c?.analytics===true);setMeta(c?.meta===true);setCrmLocation(hasCrmLocationConsent());}
+ useEffect(()=>{
+  syncChoices();setVisible(!readCookiePreferences());trackGooglePageView();void flushPrivacyReceipts();
+  const reopen=()=>{syncChoices();setError('');setCustom(true);setVisible(true);};
+  const storage=(e:StorageEvent)=>{privacyStorageChanged(e);syncChoices();refreshMetaConsent();trackGooglePageView();};
+  const online=()=>{void flushPrivacyReceipts();};
+  window.addEventListener('nido:open-cookie-settings',reopen);window.addEventListener('storage',storage);window.addEventListener('online',online);
+  return()=>{window.removeEventListener('nido:open-cookie-settings',reopen);window.removeEventListener('storage',storage);window.removeEventListener('online',online);};
+ },[]);
+ function choose(a:boolean,m:boolean){
+  try{const previouslyAllowed=readCookiePreferences()?.meta===true;saveCookiePreferences(a,m);refreshMetaConsent();syncGoogleConsent();if(a)trackGooglePageView();
+   if(m&&!previouslyAllowed){try{initTrafficAttribution();void trackMetaPageView();}catch{/* Tracking failure never invalidates the saved choice. */}}
+   setAnalytics(a);setMeta(m);setVisible(false);setError('');
+  }catch{setError('Não foi possível salvar sua escolha neste navegador. Os rastreadores opcionais permanecem sujeitos à última preferência válida.');}
+ }
+ function revokeLocation(){try{saveLocationPreference(false);setCrmLocation(false);}catch{setError('Não foi possível atualizar a preferência de localização.');}}
+ if(!visible)return null;
+ return <section data-analytics-ignore aria-label="Preferências de privacidade" className="fixed bottom-0 inset-x-0 z-[100] max-h-[85dvh] overflow-y-auto bg-white border-t border-[#E5DAD0] shadow-2xl px-4 py-5 sm:px-6 text-[#241E1B]">
+  <div className="max-w-5xl mx-auto space-y-4">
+   <div className="flex items-start justify-between gap-4"><h2 className="flex items-center gap-2 font-serif text-xl sm:text-2xl"><ShieldCheck aria-hidden className="w-5 h-5 text-[#8C7359]"/>Sua privacidade na Nidô</h2><button type="button" aria-label="Fechar preferências sem alterar escolhas" onClick={()=>setVisible(false)} className="p-2 rounded-lg hover:bg-[#FAF6F0] cursor-pointer"><X className="w-5 h-5"/></button></div>
+   <p className="text-sm leading-relaxed text-[#5C4B44]">Usamos cookies necessários para o site funcionar. Com sua autorização, também medimos a navegação para melhorar o site e compartilhamos identificadores e eventos com a Meta para medir nossos anúncios. Você pode mudar sua escolha a qualquer momento.</p>
+   {custom&&<div className="space-y-3 text-sm">
+    <div className="p-3 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0]"><h3 className="font-semibold flex items-center gap-2"><Lock className="w-4 h-4" aria-hidden/>Necessários: sempre ativos</h3><p className="mt-1 text-[#5C4B44]">Permitem o funcionamento do site e registram suas preferências de privacidade.</p></div>
+    <label className="flex items-start gap-3 p-3 rounded-xl border border-[#E5DAD0] cursor-pointer"><input type="checkbox" checked={analytics} onChange={e=>setAnalytics(e.target.checked)} className="mt-1 w-5 h-5 accent-[#44342E] shrink-0"/><span><strong className="block">Analytics</strong><span className="text-[#5C4B44]">Usamos Analytics Interno e Google Analytics para medir páginas visitadas, cliques e tempo de navegação. Os registros internos podem relacionar a navegação ao contato enviado no site.</span></span></label>
+    <label className="flex items-start gap-3 p-3 rounded-xl border border-[#E5DAD0] cursor-pointer"><input type="checkbox" checked={meta} onChange={e=>setMeta(e.target.checked)} className="mt-1 w-5 h-5 accent-[#44342E] shrink-0"/><span><strong className="block">Publicidade</strong><span className="text-[#5C4B44]">Permitem medir anúncios com a Meta usando eventos, cookies e identificadores. Ao enviar um formulário, nome, e-mail e telefone podem ser enviados com hash para correspondência.</span></span></label>
+    <div className="p-3 rounded-xl bg-[#FAF6F0] text-[#5C4B44]"><strong className="text-[#241E1B]">Localização é uma escolha separada.</strong><p>O GPS só é solicitado em <Link to="/contato" onClick={()=>setVisible(false)} className="underline">Como chegar</Link>. Aceitar cookies não autoriza guardar coordenadas no CRM.</p>{crmLocation&&<button type="button" onClick={revokeLocation} className="mt-2 underline font-semibold text-[#44342E] cursor-pointer">Revogar armazenamento da minha localização no CRM</button>}</div>
+   </div>}
+   {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
+   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+    <button type="button" onClick={()=>choose(true,true)} className={choiceButtonClass}>Aceitar todos os cookies opcionais</button>
+    <button type="button" onClick={()=>choose(false,false)} className={choiceButtonClass}>Recusar opcionais</button>
+    {custom?<button type="button" onClick={()=>choose(analytics,meta)} className="w-full rounded-xl bg-[#44342E] text-white px-4 py-3 text-sm font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2">Salvar minhas escolhas</button>:<button type="button" onClick={()=>{syncChoices();setCustom(true);}} className="w-full rounded-xl border border-[#E5DAD0] px-4 py-3 text-sm font-semibold text-[#44342E] hover:bg-[#FAF6F0] cursor-pointer">Personalizar</button>}
+   </div>
+   <p className="text-xs text-[#5C4B44] flex flex-wrap gap-x-4 gap-y-2"><Link to="/politica-de-privacidade" onClick={()=>setVisible(false)} className="underline">Política de Privacidade</Link><Link to="/politica-de-cookies" onClick={()=>setVisible(false)} className="underline">Política de Cookies</Link><span>Recusar não impede o acesso ao site ou ao atendimento.</span></p>
+  </div>
+ </section>;
 };

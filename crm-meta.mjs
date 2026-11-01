@@ -6,7 +6,7 @@ const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 export function normalizeMetaContext(input={},request={},now=Date.now()) {
   if(input?.marketingConsent!==true || !Number.isFinite(input.consentAt) || input.consentAt<=0 || input.consentAt>now || now-input.consentAt>=MAX_AGE || (input.expiresAt && input.expiresAt<=now))return null;
   const cookie=v=>typeof v==='string' && /^fb\.\d\.\d+\.[A-Za-z0-9._-]+$/.test(v) && v.length<=500?v:undefined;
-  return {marketingConsent:true,consentAt:input.consentAt,expiresAt:Math.min(input.expiresAt||input.consentAt+MAX_AGE,input.consentAt+MAX_AGE),fbp:cookie(input.fbp),fbc:cookie(input.fbc),eventSourceUrl:'https://www.nidoestetica.com.br/',clientIp:typeof request.ip==='string'?request.ip.slice(0,64):undefined,clientUserAgent:typeof request.userAgent==='string'?request.userAgent.slice(0,1024):undefined};
+  return {consentSubjectId:typeof input.consentSubjectId==='string' && /^[a-f0-9-]{36}$/i.test(input.consentSubjectId)?input.consentSubjectId:undefined,noticeVersion:typeof input.noticeVersion==='string'?input.noticeVersion.slice(0,50):undefined,marketingConsent:true,consentAt:input.consentAt,expiresAt:Math.min(input.expiresAt||input.consentAt+MAX_AGE,input.consentAt+MAX_AGE),fbp:cookie(input.fbp),fbc:cookie(input.fbc),eventSourceUrl:'https://www.nidoestetica.com.br/',clientIp:typeof request.ip==='string'?request.ip.slice(0,64):undefined,clientUserAgent:typeof request.userAgent==='string'?request.userAgent.slice(0,1024):undefined};
 }
 export function cycleId(lead){return String(parseContext(lead.procedureCycles||lead.procedure_cycles)?.[0]?.cycleId||`initial_${lead.id}`);}
 export function qualifiedEventId(lead){return 'nido_qualified_'+hash(`${lead.id}:${cycleId(lead)}`).slice(0,48);}
@@ -29,12 +29,13 @@ export function buildQualifiedLeadEvent(lead,now=Date.now()) {
 export async function initCrmMetaOutbox(pool){
  await pool.query(`CREATE TABLE IF NOT EXISTS nido_meta_outbox (event_id VARCHAR(100) PRIMARY KEY,lead_id VARCHAR(100) NOT NULL,cycle_id VARCHAR(150) NOT NULL,payload JSON NOT NULL,consent_expires_at BIGINT NOT NULL,state VARCHAR(16) NOT NULL DEFAULT 'pending',attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,locked_until DATETIME NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,sent_at DATETIME NULL,INDEX pending_events (state,next_attempt_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 }
-export function createCrmMetaQueue({pool,send,now=Date.now}){
+export function createCrmMetaQueue({pool,send,now=Date.now,isAllowed=async(_lead)=>true}){
  let draining;
  async function qualify(id){
   const [rows]=await pool.query('SELECT * FROM nido_leads WHERE id=? AND deleted_at IS NULL',[id]);const lead=rows[0];
   if(!lead)return {status:'missing'};
   const payload=buildQualifiedLeadEvent(lead,now());if(!payload)return {status:'ineligible'};
+  if(!await isAllowed(lead))return {status:'revoked'};
   if(lead.meta_lead_sent)return {status:'already_sent'};
   const meta=parseContext(lead.attribution_context).meta;
   await pool.query('INSERT IGNORE INTO nido_meta_outbox (event_id,lead_id,cycle_id,payload,consent_expires_at) VALUES (?,?,?,?,?)',[payload.event_id,id,cycleId(lead),JSON.stringify(payload),meta.expiresAt||meta.consentAt+MAX_AGE]);
@@ -45,8 +46,8 @@ export function createCrmMetaQueue({pool,send,now=Date.now}){
   for(const row of rows){
    const [lease]=await pool.query("UPDATE nido_meta_outbox SET locked_until=DATE_ADD(NOW(),INTERVAL 2 MINUTE),attempts=attempts+1 WHERE event_id=? AND state='pending' AND (locked_until IS NULL OR locked_until<NOW())",[row.event_id]);if(!lease.affectedRows)continue;
    const payload=parseContext(row.payload);
-   const [live]=await pool.query('SELECT id FROM nido_leads WHERE id=? AND deleted_at IS NULL',[row.lead_id]);
-   if(!live.length || Number(row.consent_expires_at)<=now() || now()/1000-Number(payload.event_time)>7*86400){await pool.query("UPDATE nido_meta_outbox SET state='skipped',locked_until=NULL WHERE event_id=?",[row.event_id]);continue;}
+   const [live]=await pool.query('SELECT * FROM nido_leads WHERE id=? AND deleted_at IS NULL',[row.lead_id]);
+   if(!live.length || !await isAllowed(live[0]) || Number(row.consent_expires_at)<=now() || now()/1000-Number(payload.event_time)>7*86400){await pool.query("UPDATE nido_meta_outbox SET state='skipped',locked_until=NULL WHERE event_id=?",[row.event_id]);continue;}
    let result;try{result=await send({data:[payload]});}catch{result={success:false};}
    if(result.success===true && Number(result.events_received)>0){
     await pool.query("UPDATE nido_meta_outbox SET state='sent',sent_at=NOW(),locked_until=NULL WHERE event_id=?",[row.event_id]);

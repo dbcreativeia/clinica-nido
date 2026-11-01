@@ -1,3 +1,4 @@
+import {initConsentReceipts,recordConsentReceipt,isStoredMarketingAllowed} from './privacy-consent.mjs';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -580,6 +581,21 @@ async function startServer() {
   // Initialize MySQL leads table if not exists
   let isDbReady = false;
   let isAnalyticsDbReady = false;
+  let isPrivacyReady=false;
+  const privacyRate=new Map<string,{count:number,until:number}>();
+  app.get('/api/privacy/status',(_req,res)=>res.json({version:'nido-privacy-v1',ready:isPrivacyReady}));
+  app.post('/api/privacy/consent',async(req,res)=>{
+    const origin=req.headers.origin;
+    if(origin && !['https://nidoestetica.com.br','https://www.nidoestetica.com.br'].includes(origin) && process.env.NODE_ENV==='production')return res.status(403).json({success:false});
+    const key=extractRealClientIp(req)||'unknown',now=Date.now();
+    if(privacyRate.size>5000)for(const [k,v] of privacyRate)if(v.until<now)privacyRate.delete(k);
+    const quota=privacyRate.get(key);if(quota&&quota.until>now&&quota.count>=120)return res.status(429).json({success:false});
+    privacyRate.set(key,{count:quota&&quota.until>now?quota.count+1:1,until:quota&&quota.until>now?quota.until:now+3600000});
+    if(!dbPool)return res.status(503).json({success:false});
+    try{if(!isPrivacyReady){await initConsentReceipts(dbPool);isPrivacyReady=true;}
+      const receiptId=await recordConsentReceipt(dbPool,req.body);return res.json({success:true,receiptId});
+    }catch(error){if(error instanceof Error && error.message==='Invalid privacy receipt')return res.status(400).json({success:false});return res.status(503).json({success:false});}
+  });
 
   async function initAnalyticsTable(): Promise<void> {
     if (!dbPool) return;
@@ -599,7 +615,7 @@ async function startServer() {
     if (crmMetaQueue || !dbPool) return;
     if (!metaQueueStarting) metaQueueStarting=(async()=>{
       await initCrmMetaOutbox(dbPool);
-      crmMetaQueue=createCrmMetaQueue({pool:dbPool,send:async(payload: any)=> {
+      crmMetaQueue=createCrmMetaQueue({pool:dbPool,isAllowed:(lead:any)=>isStoredMarketingAllowed(dbPool,lead),send:async(payload: any)=> {
         if(process.env.NODE_ENV!=='production') return {success:false,events_received:0};
         return sendMetaConversionEvent(payload,{token:CAPI_TOKEN,pixelId:PIXEL_ID,maxRetries:3});
       }});
@@ -688,6 +704,7 @@ async function startServer() {
     }
 
     await initAnalyticsTable().catch(console.error);
+    if(dbPool)try{await initConsentReceipts(dbPool);isPrivacyReady=true;}catch{isPrivacyReady=false;}
   }
 
   // Trigger table check on boot and await
