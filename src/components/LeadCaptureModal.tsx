@@ -26,6 +26,12 @@ export const LeadCaptureModal: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Measure intent once per visible opening, independently from form submission.
+  // trackMetaEvent enforces marketing consent and shares the Pixel/CAPI event ID.
+  useEffect(() => {
+    if (isOpen) void trackMetaEvent('WhatsAppFormOpen');
+  }, [isOpen]);
+
   // Pre-fill if previously stored
   useEffect(() => {
     try {

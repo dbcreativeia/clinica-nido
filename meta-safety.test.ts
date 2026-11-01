@@ -21,3 +21,15 @@ test('Contact sends normalized identifiers only in userData, with same Pixel/CAP
  assert.equal(sent.userData.ct,undefined);assert.equal(sent.userData.st,undefined);
 });
 test('preview cannot send a live event even with client test flag',async()=>{const calls=setup({meta:true,timestamp:Date.now()});(window as any).location.hostname='preview.example.com';await trackMetaEvent('Contact',{testEventCode:'TEST'});assert.equal(calls(),0)});
+test('form opening uses custom Pixel event and matching CAPI ID without contact identifiers',async()=>{
+ setup({meta:true,timestamp:Date.now()});
+ const pixel:any[]=[];(window as any).fbq=(...args:any[])=>pixel.push(args);
+ let sent:any;(globalThis as any).fetch=async(_url:any,opts:any)=>{sent=JSON.parse(opts.body);return {ok:true,json:async()=>({success:true})}};
+ await trackMetaEvent('WhatsAppFormOpen');
+ const event=pixel.find(args=>args[0]==='trackCustom');
+ assert.ok(event,'custom event must use trackCustom');
+ assert.equal(event[1],'WhatsAppFormOpen');assert.equal(sent.eventName,'WhatsAppFormOpen');
+ assert.equal(event[3].eventID,sent.eventId);
+ assert.equal(pixel.some(args=>args[1]==='Contact'||args[1]==='Lead'),false);
+ assert.equal(sent.userData.em,undefined);assert.equal(sent.userData.ph,undefined);
+});

@@ -303,7 +303,8 @@ export async function trackMetaEvent(
     };
   }
   initializePixel(finalUserData);
-  window.fbq?.('track',eventName,sanitizedCustomData,{eventID:eventId});
+  const pixelMethod = eventName === 'WhatsAppFormOpen' ? 'trackCustom' : 'track';
+  window.fbq?.(pixelMethod,eventName,sanitizedCustomData,{eventID:eventId});
   const body=JSON.stringify({eventName,eventId,eventTime:Math.floor(Date.now()/1000),eventSourceUrl:sanitizedUrl,customData:sanitizedCustomData,userData:finalUserData,marketingConsent:true});
   // Only retry the server copy. The browser event and CRM form are never repeated.
   for(let attempt=0;attempt<2;attempt++) {
