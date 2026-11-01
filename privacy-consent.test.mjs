@@ -19,7 +19,7 @@ test('privacy module exposes validated choices and immutable receipt version',as
 test('cookie banner never requests GPS and accept/reject share the same button class',()=>{
  const s=fs.readFileSync('src/components/ConsentBanner.tsx','utf8');
  assert.doesNotMatch(s,/requestBrowserLocation|handleTriggerGeo|Aceitar Todos & GPS/);
- assert.match(s,/Aceitar todos os cookies opcionais/);assert.match(s,/Recusar opcionais/);
+ assert.match(s,/Aceitar opcionais/);assert.match(s,/Recusar opcionais/);
  assert.equal((s.match(/className=\{choiceButtonClass\}/g)||[]).length,2);
 });
 test('receipt persistence stores only validated fields and latest refusal blocks queued qualification',async()=>{
