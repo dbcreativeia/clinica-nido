@@ -1636,7 +1636,12 @@ async function startServer() {
         }
       }
 
+      res.setHeader('Cache-Control', 'no-store');
       return res.json({
+        version: 'nido-crm-diag-v1',
+        fetchedCount: kommoLeads.length,
+        idsSample: kommoLeads.slice(0, 3).map((l: any) => ({ id: l.id, statusId: l.status_id, pipelineId: l.pipeline_id })),
+        siteLeadCount: siteLeads.length,
         success: true,
         message: `${adsCalibratedCount} leads qualificados do Kommo calibrados para Meta/Google Ads. ${siteLeadsUpdatedCount} leads do site atualizados.`,
         adsCalibratedCount,
