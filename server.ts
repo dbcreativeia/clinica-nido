@@ -1362,6 +1362,18 @@ async function startServer() {
         const kommoStatusId = String(item.status_id || '');
         const kommoStatusName = String(item.status_name || item.pipeline_name || '').toLowerCase();
         const leadName = String(item.name || '').trim();
+        const isDeleted = item.is_deleted === true || item.is_deleted === 'true' || item.deleted === true || String(item.action || '').toLowerCase().includes('delete');
+
+        if (isDeleted) {
+          const initialLen = allLeads.length;
+          const filtered = allLeads.filter((l: any) => l.kommoLeadId !== kommoLeadId);
+          if (filtered.length < initialLen) {
+            allLeads.length = 0;
+            allLeads.push(...filtered);
+            updatedCount++;
+          }
+          continue;
+        }
 
         // Map status based on name or known stage keywords from all Kommo pipelines
         let mappedStatus: 'novo' | 'em_contato' | 'agendado' | 'compareceu' | 'convertido' | 'perdido' | null = null;
