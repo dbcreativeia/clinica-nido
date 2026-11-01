@@ -7,6 +7,7 @@ import { getStoredTrafficAttribution, initTrafficAttribution } from './trafficSo
 import { normalizeLocation } from '../../tracking-context.mjs';
 import { TREATMENTS } from '../data/treatments.ts';
 import { TECHNOLOGIES } from '../data/technologies.ts';
+import { trackMetaFindLocation } from './metaConversions.ts';
 
 export interface VisitorLocation {
   city: string;
@@ -477,6 +478,54 @@ export function getSessionJourney(): SessionJourney {
   }
 }
 
+export function detectLocationApp(
+  clickable: HTMLElement,
+  href: string
+): 'Google Maps' | 'Waze' | 'Uber' | null {
+  if (!clickable) return null;
+
+  // 1. Check explicit data-location-app attribute on element or parent
+  const dataAttr = clickable.getAttribute('data-location-app') || clickable.closest('[data-location-app]')?.getAttribute('data-location-app');
+  if (dataAttr) {
+    const attrLower = dataAttr.trim().toLowerCase();
+    if (attrLower === 'waze') return 'Waze';
+    if (attrLower === 'uber') return 'Uber';
+    if (attrLower.includes('maps') || attrLower === 'google maps' || attrLower === 'google_maps') return 'Google Maps';
+  }
+
+  // 2. Strict URL / Domain / Hostname classification
+  if (href && (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//'))) {
+    try {
+      const urlString = href.startsWith('//') ? `https:${href}` : href;
+      const url = new URL(urlString);
+      const host = url.hostname.toLowerCase();
+      const path = url.pathname.toLowerCase();
+
+      // Waze domain matching
+      if (host === 'waze.com' || host.endsWith('.waze.com')) {
+        return 'Waze';
+      }
+
+      // Uber domain matching
+      if (host === 'uber.com' || host.endsWith('.uber.com')) {
+        return 'Uber';
+      }
+
+      // Google Maps domain & path matching
+      if (host === 'maps.google.com' || host === 'maps.app.goo.gl' || host === 'goo.gl') {
+        return 'Google Maps';
+      }
+      if ((host === 'google.com' || host.endsWith('.google.com') || host.endsWith('.google.com.br')) && (path.startsWith('/maps') || url.searchParams.has('query'))) {
+        return 'Google Maps';
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+  }
+
+  return null;
+}
+
 function setupGlobalListeners() {
   if (typeof window === 'undefined') return;
 
@@ -527,10 +576,9 @@ function setupGlobalListeners() {
     stopHeartbeat();
   });
 
-  // Delegated click listener for links & CTA buttons (treatment view removed from here, handled in pageview)
+  // Delegated click listener for links & CTA buttons
   document.addEventListener('click', (ev) => {
-    if (!hasAnalyticsConsent()) return;
-    const currentPath = window.location.pathname;
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
     if (isIgnoredPath(currentPath)) return;
 
     const target = ev.target as HTMLElement | null;
@@ -552,25 +600,38 @@ function setupGlobalListeners() {
     ).replace(/\s+/g, ' ').trim().slice(0, 80);
 
     const href = clickable.getAttribute('href') || '';
+    const locationApp = detectLocationApp(clickable, href);
 
-    if (href) {
-      if (href.startsWith('http') || href.startsWith('//')) {
-        const lowerHref = href.toLowerCase();
-        if (lowerHref.includes('wa.me') || lowerHref.includes('whatsapp') || lowerHref.includes('maps') || lowerHref.includes('waze')) {
-          trackCTAClick(rawLabel || 'Contato Externo', href);
-        } else {
-          trackRouteClick(href, rawLabel || href);
-        }
-      } else if (href.startsWith('/') || href.startsWith('#')) {
-        const cleanPath = href.split('?')[0].split('#')[0];
-        if (cleanPath && !isIgnoredPath(cleanPath)) {
-          trackRouteClick(cleanPath, rawLabel || cleanPath);
-        }
+    // Meta FindLocation tracking (governed independently by hasMetaConsent in trackMetaFindLocation)
+    if (locationApp) {
+      try {
+        trackMetaFindLocation(locationApp, currentPath);
+      } catch {
+        // Safe execution, never blocks navigation
       }
-    } else if (clickable.tagName.toLowerCase() === 'button' || clickable.getAttribute('role') === 'button') {
-      const buttonType = clickable.getAttribute('type');
-      if (buttonType !== 'submit' && rawLabel) {
-        trackCTAClick(rawLabel, currentPath);
+    }
+
+    // Internal Analytics tracking (governed strictly by hasAnalyticsConsent)
+    if (hasAnalyticsConsent()) {
+      if (href) {
+        if (href.startsWith('http') || href.startsWith('//')) {
+          const lowerHref = href.toLowerCase();
+          if (lowerHref.includes('wa.me') || lowerHref.includes('whatsapp') || locationApp) {
+            trackCTAClick(rawLabel || (locationApp ? `Rota ${locationApp}` : 'Contato Externo'), href);
+          } else {
+            trackRouteClick(href, rawLabel || href);
+          }
+        } else if (href.startsWith('/') || href.startsWith('#')) {
+          const cleanPath = href.split('?')[0].split('#')[0];
+          if (cleanPath && !isIgnoredPath(cleanPath)) {
+            trackRouteClick(cleanPath, rawLabel || cleanPath);
+          }
+        }
+      } else if (clickable.tagName.toLowerCase() === 'button' || clickable.getAttribute('role') === 'button') {
+        const buttonType = clickable.getAttribute('type');
+        if (buttonType !== 'submit' && rawLabel) {
+          trackCTAClick(rawLabel, currentPath);
+        }
       }
     }
   });

@@ -318,7 +318,29 @@ async function startServer() {
 
       const finalEventId = eventId || `nido_${eventName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-      const sanitizedCustomData={currency:'BRL',content_name:'Informações institucionais',content_category:'Site'};
+      let sanitizedCustomData: Record<string, unknown> = {
+        currency: 'BRL',
+        content_name: 'Informações institucionais',
+        content_category: 'Site'
+      };
+
+      if (eventName === 'FindLocation') {
+        let app: string | undefined = undefined;
+        if (['Google Maps', 'Waze', 'Uber'].includes(customData.destination_app)) {
+          app = customData.destination_app;
+        }
+        let locLabel = 'Site';
+        if (customData.cta_location === 'Rodapé') locLabel = 'Rodapé';
+        else if (customData.cta_location === 'Contato' || customData.cta_location === '/contato') locLabel = 'Contato';
+
+        sanitizedCustomData = {
+          currency: 'BRL',
+          content_name: 'Clínica Nidô - Água Branca, São Paulo',
+          content_category: 'Localização & Rota',
+          ...(app ? { destination_app: app } : {}),
+          cta_location: locLabel
+        };
+      }
 
       const eventPayload: Record<string, unknown> = {
         event_name: eventName,

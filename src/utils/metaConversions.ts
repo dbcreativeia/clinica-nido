@@ -278,7 +278,30 @@ export async function trackMetaEvent(
     if(key==='ph') {value=value.replace(/\D/g,'');if(value.length===10 || value.length===11)value='55'+value;if(!/^55\d{10,11}$/.test(value))value='';}
     if(value)finalUserData[key]=value;
   }
-  const sanitizedCustomData={content_name:'Informações institucionais',content_category:'Site',currency:'BRL'};
+  let sanitizedCustomData: Record<string, unknown> = {
+    content_name: 'Informações institucionais',
+    content_category: 'Site',
+    currency: 'BRL'
+  };
+
+  if (eventName === 'FindLocation') {
+    const rawCustom = options.customData || {};
+    let app: 'Google Maps' | 'Waze' | 'Uber' = 'Google Maps';
+    if (rawCustom.destination_app === 'Waze') app = 'Waze';
+    else if (rawCustom.destination_app === 'Uber') app = 'Uber';
+
+    let locLabel = 'Site';
+    if (rawCustom.cta_location === 'Rodapé') locLabel = 'Rodapé';
+    else if (rawCustom.cta_location === 'Contato' || rawCustom.cta_location === '/contato' || (typeof rawCustom.cta_location === 'string' && rawCustom.cta_location.toLowerCase().includes('contato'))) locLabel = 'Contato';
+
+    sanitizedCustomData = {
+      content_name: 'Clínica Nidô - Água Branca, São Paulo',
+      content_category: 'Localização & Rota',
+      currency: 'BRL',
+      destination_app: app,
+      cta_location: locLabel
+    };
+  }
   initializePixel(finalUserData);
   window.fbq?.('track',eventName,sanitizedCustomData,{eventID:eventId});
   const body=JSON.stringify({eventName,eventId,eventTime:Math.floor(Date.now()/1000),eventSourceUrl:sanitizedUrl,customData:sanitizedCustomData,userData:finalUserData,marketingConsent:true});
@@ -310,6 +333,25 @@ export function trackMetaPageView(path?: string): void {
     customData: {
       page_path: path || (typeof window !== 'undefined' ? window.location.pathname : '/'),
       content_category: 'Navegação Institucional'
+    }
+  });
+}
+
+/**
+ * Tracks a FindLocation event (e.g., clicking Google Maps, Waze, Uber or viewing address).
+ */
+export function trackMetaFindLocation(
+  destinationApp = 'Google Maps',
+  ctaLocation = 'Site'
+): Promise<string> {
+  const eventId = generateEventId('findlocation');
+  return trackMetaEvent('FindLocation', {
+    eventId,
+    customData: {
+      content_name: 'Clínica Nidô - Água Branca, São Paulo',
+      destination_app: destinationApp,
+      content_category: 'Localização & Rota',
+      cta_location: ctaLocation
     }
   });
 }

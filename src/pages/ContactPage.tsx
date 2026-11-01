@@ -228,6 +228,7 @@ export const ContactPage: React.FC = () => {
               {/* Botão Waze */}
               <a
                 href={wazeUrl}
+                data-location-app="Waze"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2.5 bg-[#33CCFF] hover:bg-[#28b5e6] text-[#0B3B4E] font-bold text-sm py-3.5 px-4 rounded-2xl transition-all shadow-xs cursor-pointer active:scale-98"
@@ -240,6 +241,7 @@ export const ContactPage: React.FC = () => {
               {/* Botão Uber */}
               <a
                 href={uberUrl}
+                data-location-app="Uber"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2.5 bg-[#000000] hover:bg-[#1f1f1f] text-[#FFFFFF] font-bold text-sm py-3.5 px-4 rounded-2xl transition-all shadow-xs cursor-pointer active:scale-98"
@@ -252,6 +254,7 @@ export const ContactPage: React.FC = () => {
               {/* Botão Google Maps */}
               <a
                 href={googleMapsUrl}
+                data-location-app="Google Maps"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2.5 bg-[#FFFFFF] hover:bg-[#EFE6DC] text-[#1F1916] font-bold text-sm py-3.5 px-4 rounded-2xl border border-[#E5DAD0] transition-all shadow-xs cursor-pointer active:scale-98"

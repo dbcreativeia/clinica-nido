@@ -41,14 +41,21 @@ export const Footer: React.FC = () => {
               Atendimento & Horários
             </h4>
             <div className="space-y-3 text-xs sm:text-sm text-[#F7F2EB]/90 font-normal flex flex-col items-center md:items-start">
-              <div className="flex flex-col md:flex-row items-center md:items-start gap-2 md:gap-2.5 text-center md:text-left">
-                <MapPin className="w-4 h-4 text-[#C4A480] shrink-0 md:mt-0.5" />
+              <a
+                href="https://www.google.com/maps/search/?api=1&query=Rua%20Dona%20Germaine%20Burchard%2C%20499%20-%20%C3%81gua%20Branca%2C%20S%C3%A3o%20Paulo%20-%20SP"
+                data-location-app="Google Maps"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col md:flex-row items-center md:items-start gap-2 md:gap-2.5 text-center md:text-left hover:text-[#FFFFFF] transition-colors group"
+                aria-label="Abrir endereço da Clínica Nidô no Google Maps"
+              >
+                <MapPin className="w-4 h-4 text-[#C4A480] shrink-0 md:mt-0.5 group-hover:scale-110 transition-transform" />
                 <span className="leading-snug">
                   Rua Dona Germaine Burchard, 499<br />
                   Água Branca, São Paulo — SP<br />
                   CEP 05002-062
                 </span>
-              </div>
+              </a>
 
               <div className="flex flex-col md:flex-row items-center md:items-start gap-2 md:gap-2.5 text-center md:text-left">
                 <Clock className="w-4 h-4 text-[#C4A480] shrink-0 md:mt-0.5" />
