@@ -30,6 +30,14 @@ export function hasMetaConsent(): boolean {
     return c?.meta===true && typeof c.timestamp==='number' && age>=0 && age<180*86400000 && (!c.expiresAt || c.expiresAt>Date.now());
   } catch { return false; }
 }
+/** Reuse the existing marketing-consent subject, independently of analytics consent. */
+function consentedExternalId(): string | undefined {
+  if(!hasMetaConsent())return undefined;
+  try {
+    const id=JSON.parse(localStorage.getItem('nido_cookie_consent')||'null')?.consentSubjectId;
+    return typeof id==='string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)?id:undefined;
+  } catch {return undefined;}
+}
 let pixelInitialized=false;
 function initializePixel(userData: MetaUserData): void {
   if(!isProductionDomain() || !hasMetaConsent()) return;
@@ -42,7 +50,7 @@ function initializePixel(userData: MetaUserData): void {
   window.fbq?.('consent','grant');
   if(!pixelInitialized) {
     const matching:Record<string,string>={};
-    for(const key of ['em','ph','fn','ln','country'] as const) if(userData[key])matching[key]=userData[key]!;
+    for(const key of ['em','ph','fn','ln','country','external_id'] as const) if(userData[key])matching[key]=userData[key]!;
     window.fbq?.('init',META_PIXEL_ID,matching);pixelInitialized=true;
   }
   // Later form identifiers enrich CAPI. Pixel automatic matching remains enabled.
@@ -259,7 +267,7 @@ export async function trackMetaEvent(
   eventName: 'PageView' | 'Lead' | 'Contact' | 'ViewContent' | 'Search' | string,
   options: MetaEventOptions = {}
 ): Promise<string> {
-  if(typeof window==='undefined' || !isProductionDomain() || !hasMetaConsent()) return options.eventId || generateEventId(eventName);
+  if(typeof window==='undefined' || !isProductionDomain() || !hasMetaConsent() || eventName==='Lead') return options.eventId || generateEventId(eventName);
   // 2. Prevent accidental micro-duplicate triggers
   const eventId = options.eventId || generateEventId(eventName);
   const dedupeKey = `${eventName}_${window?.location?.pathname || '/'}`;
@@ -287,6 +295,8 @@ export async function trackMetaEvent(
     if(key==='ph') {value=value.replace(/\D/g,'');if(value.length===10 || value.length===11)value='55'+value;if(!/^55\d{10,11}$/.test(value))value='';}
     if(value)finalUserData[key]=value;
   }
+  const externalId=consentedExternalId();
+  if(externalId)finalUserData.external_id=externalId;
   let sanitizedCustomData: Record<string, unknown> = {
     content_name: 'Informações institucionais',
     content_category: 'Site',

@@ -74,3 +74,17 @@ test('failed delivery can be retried with the original event ID and time',async(
  assert.equal((await sendMetaConversionEvent(payload,{fetchFn,token:'test',maxRetries:1})).success,false);
  assert.equal((await sendMetaConversionEvent(payload,{fetchFn,token:'test',maxRetries:1})).success,true);assert.equal(calls,2);
 });
+
+test('dispatch diagnostics distinguish actual network attempts, cache hits and concurrent copies without identifiers',async()=>{
+ const {getMetaDispatchDiagnostics}=await import('./meta-capi.mjs');
+ assert.equal(typeof getMetaDispatchDiagnostics,'function');
+ const before=getMetaDispatchDiagnostics().events.Contact;
+ const payload={data:[{event_name:'Contact',event_id:'diagnostic_private_event',user_data:{em:'private-email'}}]};let calls=0;
+ const fetchFn=async()=>{calls++;await new Promise(r=>setTimeout(r,5));return{ok:true,status:200,json:async()=>({events_received:1})}};
+ await Promise.all([sendMetaConversionEvent(payload,{fetchFn,token:'test'}),sendMetaConversionEvent(payload,{fetchFn,token:'test'})]);
+ await sendMetaConversionEvent(payload,{fetchFn,token:'test'});
+ const after=getMetaDispatchDiagnostics(),delta=key=>after.events.Contact[key]-before[key];
+ assert.equal(calls,1);assert.equal(delta('requests'),3);assert.equal(delta('attempts'),1);assert.equal(delta('inFlightReuses'),1);assert.equal(delta('cacheHits'),1);assert.equal(delta('acknowledged'),1);assert.equal(delta('eventsReceived'),1);
+ assert.equal(JSON.stringify(after).includes('private'),false);
+ after.events.Contact.requests=-1;assert.notEqual(getMetaDispatchDiagnostics().events.Contact.requests,-1);
+});

@@ -8,7 +8,7 @@ import { promises as fsp } from 'fs';
 import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
-import { sendMetaConversionEvent } from './meta-capi.mjs';
+import { sendMetaConversionEvent, getMetaDispatchDiagnostics } from './meta-capi.mjs';
 import { normalizeMetaContext, initCrmMetaOutbox, createCrmMetaQueue } from './crm-meta.mjs';
 import { normalizeLocation, normalizeAttribution, parseContext } from './tracking-context.mjs';
 import { initAnalyticsDatabase, recordAnalyticsEvent, getAnalyticsStats } from './analytics-engine.mjs';
@@ -251,10 +251,11 @@ async function startServer() {
     const isProdEnv = process.env.NODE_ENV === 'production';
     const testModeActive = !isProdEnv && process.env.META_FORCE_TEST_MODE === 'true' && Boolean(TEST_EVENT_CODE);
     res.json({
-      version: 'nido-meta-v3',
+      version: 'nido-meta-v4',
       status: 'active',
       pixelId: PIXEL_ID,
       tokenConfigured: Boolean(CAPI_TOKEN),
+      dispatchDiagnostics: getMetaDispatchDiagnostics(),
       testCodeConfigured: Boolean(TEST_EVENT_CODE),
       testModeActive,
       productionDomains: PRODUCTION_DOMAINS,

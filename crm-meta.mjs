@@ -15,7 +15,7 @@ export function buildQualifiedLeadEvent(lead,now=Date.now()) {
   const stored=parseContext(lead.attribution||lead.attribution_context)?.meta;
   const meta=normalizeMetaContext(stored,{},now);if(!meta)return null;
   const user_data={};
-  const visitorId=parseContext(lead.attribution||lead.attribution_context)?.visitorId;
+  const visitorId=meta.consentSubjectId || parseContext(lead.attribution||lead.attribution_context)?.visitorId;
   if(typeof visitorId==='string' && visitorId)user_data.external_id=hash(visitorId);
   const email=String(lead.email||'').trim().toLowerCase();if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !email.endsWith('@nido.local'))user_data.em=hash(email);
   let phone=String(lead.phone||'').replace(/\D/g,'');if(phone.length===10||phone.length===11)phone='55'+phone;if(/^55\d{10,11}$/.test(phone))user_data.ph=hash(phone);
