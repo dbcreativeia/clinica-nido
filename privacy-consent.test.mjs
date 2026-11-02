@@ -32,3 +32,9 @@ test('receipt persistence stores only validated fields and latest refusal blocks
  assert.equal(await isStoredMarketingAllowed({query:async()=>[[{choices:{meta:true}}]]},lead),true);
 });
 test('Google Analytics is not loaded unconditionally from HTML',()=>{assert.doesNotMatch(fs.readFileSync('index.html','utf8'),/<script[^>]+src="https:\/\/www.googletagmanager.com/);});
+test('a new grant cannot backfill a qualification that happened during a refusal',async()=>{
+ const {isStoredMarketingAllowed}=await import('./privacy-consent.mjs');let calls=0;
+ const pool={query:async()=>{calls++;return [[{choices:{meta:calls===1},notice_version:'nido-privacy-2026-11-02'}]];}};
+ assert.equal(await isStoredMarketingAllowed(pool,{attribution_context:{meta:{consentSubjectId:'subject'}}},Date.now()-1000),false);
+ assert.equal(calls,2);
+});

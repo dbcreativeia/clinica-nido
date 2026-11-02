@@ -1,4 +1,4 @@
-export const NOTICE_VERSION='nido-privacy-2026-11-01';
+export const NOTICE_VERSION='nido-privacy-2026-11-02';
 export const CONSENT_DURATION_MS=180*86400000;
 export function readCookieChoice(raw,now=Date.now()) {
  try {
@@ -19,10 +19,19 @@ export async function recordConsentReceipt(pool,input,now=Date.now()){
  await pool.query('INSERT IGNORE INTO nido_privacy_consents (id,subject_id,kind,notice_version,chosen_at,choices) VALUES (?,?,?,?,?,?)',[r.id,r.subjectId,r.kind,r.noticeVersion,r.timestamp,JSON.stringify(r.choices)]);
  return r.id;
 }
-export async function isStoredMarketingAllowed(pool,lead){
+/** @param {number|undefined} [eventAt] */
+export async function isStoredMarketingAllowed(pool,lead,eventAt=undefined){
  let a;try{a=typeof lead.attribution_context==='string'?JSON.parse(lead.attribution_context):lead.attribution_context;}catch{return false;}
  const id=a?.meta?.consentSubjectId;if(!id)return true; // Legacy consent remains subject to its original expiry.
  const [rows]=await pool.query("SELECT choices FROM nido_privacy_consents WHERE subject_id=? AND kind='cookies' ORDER BY chosen_at DESC,received_at DESC,id DESC LIMIT 1",[id]);
  if(!rows.length)return false;
- const c=typeof rows[0].choices==='string'?JSON.parse(rows[0].choices):rows[0].choices;return c?.meta===true;
+ const c=typeof rows[0].choices==='string'?JSON.parse(rows[0].choices):rows[0].choices;if(c?.meta!==true)return false;
+ if(eventAt!==undefined){
+  if(!Number.isFinite(eventAt))return false;
+  const [history]=await pool.query("SELECT choices,notice_version FROM nido_privacy_consents WHERE subject_id=? AND kind='cookies' AND chosen_at<=? ORDER BY chosen_at DESC,received_at DESC,id DESC LIMIT 1",[id,eventAt]);
+  if(!history.length||history[0].notice_version!==NOTICE_VERSION)return false;
+  const previous=typeof history[0].choices==='string'?JSON.parse(history[0].choices):history[0].choices;
+  return previous?.meta===true;
+ }
+ return true;
 }

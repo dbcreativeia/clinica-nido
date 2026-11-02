@@ -23,3 +23,7 @@ test('actual customization defaults off, remembers a refusal and saves independe
  let c=JSON.parse(a.values.get('nido_cookie_consent'));assert.equal(c.analytics,true);assert.equal(c.meta,false);
  const b=app({analytics:false,meta:false,timestamp:Date.now()});assert.equal(b.render(),null);
 });
+test('an old Meta-only advertising grant asks again before adding Google measurement',()=>{
+ const a=app({analytics:true,meta:true,noticeVersion:'nido-privacy-2026-11-01',timestamp:Date.now()});
+ const tree=a.render();assert.ok(tree);assert.match(a.text(tree),/Google/);
+});

@@ -40,6 +40,14 @@ test('missing campaign metadata stays unknown, without fabricated campaign names
   browser('?gclid=click123');
   assert.equal(initTrafficAttribution().campaign,'');
 });
+test('Google click type survives navigation without relabeling braids as GCLID',()=>{
+  for(const type of ['gclid','gbraid','wbraid']){
+    browser('?'+type+'=TestClickIdentifier_123');
+    const data=initTrafficAttribution();assert.equal(data.clickIdType,type);
+    window.location.search='';
+    assert.equal(initTrafficAttribution().clickIdType,type);
+  }
+});
 test('fbclid alone is insufficient evidence to classify organic Facebook as paid advertising',()=>{
   browser('?fbclid=click123');
   assert.notEqual(initTrafficAttribution().channel,'Meta Ads');
