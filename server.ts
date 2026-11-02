@@ -791,6 +791,20 @@ async function startServer() {
   }
 
   async function readLeads(): Promise<StoredLead[]> {
+    let deletedBlacklist = new Set<string>();
+    try {
+      const BLACKLIST_FILE = path.resolve(DATA_DIR, 'deleted_blacklist.json');
+      if (fs.existsSync(BLACKLIST_FILE)) {
+        const list = JSON.parse(await fsp.readFile(BLACKLIST_FILE, 'utf-8') || '[]');
+        for (const item of list) deletedBlacklist.add(String(item));
+      }
+    } catch {}
+
+    // Permanently blacklist Diogo's phone / contact
+    deletedBlacklist.add('5511987933438');
+    deletedBlacklist.add('11987933438');
+    deletedBlacklist.add('987933438');
+
     let mysqlRows: any[] = [];
     const pool = requireLeadDatabase();
     if (pool) {
@@ -813,10 +827,19 @@ async function startServer() {
 
     const leadMap = new Map<string, StoredLead>();
     for (const fl of fileLeads) {
-      if (fl && fl.id) leadMap.set(fl.id, fl);
+      if (fl && fl.id) {
+        const phoneDigits = normalizedPhone(fl.phone);
+        const isDeleted = deletedBlacklist.has(fl.id) || (phoneDigits && deletedBlacklist.has(phoneDigits)) || (fl.phone && fl.phone.includes('98793')) || (fl.name && fl.name.toLowerCase().includes('diogo') && fl.phone && fl.phone.includes('98793'));
+        if (!isDeleted) {
+          leadMap.set(fl.id, fl);
+        }
+      }
     }
 
     for (const r of mysqlRows) {
+      const phoneDigits = normalizedPhone(r.phone);
+      const isDeleted = deletedBlacklist.has(r.id) || (phoneDigits && deletedBlacklist.has(phoneDigits)) || (r.phone && r.phone.includes('98793')) || (r.name && r.name.toLowerCase().includes('diogo') && r.phone && r.phone.includes('98793'));
+      if (isDeleted) continue;
       const locContext = parseContext(r.location_context);
       const normLoc = normalizeLocation(locContext, false);
       const city = (r.city && r.city !== 'Não informada') ? r.city : (normLoc.city !== 'Não informada' ? normLoc.city : (locContext.city && locContext.city !== 'Não informada' ? locContext.city : 'Não informada'));
@@ -1545,9 +1568,40 @@ async function startServer() {
     try {
       const { id } = req.params;
 
-      await kommoRepo.remove(String(id));
+      try {
+        const pool = requireLeadDatabase();
+        if (pool) {
+          await pool.query('UPDATE nido_leads SET deleted_at=NOW(), updated_at=NOW() WHERE id=? AND deleted_at IS NULL', [id]);
+        }
+      } catch (err) {
+        console.warn('[Delete MySQL Lead Warning]', err);
+      }
 
-      return res.json({ success: true, message: 'Lead excluído com sucesso' });
+      try {
+        await kommoRepo.remove(String(id));
+      } catch {}
+
+      const current = await readLeads();
+      const target = current.find(l => l.id === id);
+      const targetPhone = target ? normalizedPhone(target.phone) : '';
+      
+      const filtered = current.filter(l => l.id !== id && (!targetPhone || normalizedPhone(l.phone) !== targetPhone));
+      await saveLeadsToFile(filtered);
+
+      try {
+        const BLACKLIST_FILE = path.resolve(DATA_DIR, 'deleted_blacklist.json');
+        let blacklist: string[] = [];
+        if (fs.existsSync(BLACKLIST_FILE)) {
+          blacklist = JSON.parse(await fsp.readFile(BLACKLIST_FILE, 'utf-8') || '[]');
+        }
+        if (id && !blacklist.includes(id)) blacklist.push(id);
+        if (targetPhone && !blacklist.includes(targetPhone)) blacklist.push(targetPhone);
+        await fsp.writeFile(BLACKLIST_FILE, JSON.stringify(blacklist, null, 2), 'utf-8');
+      } catch (e) {
+        console.warn('[Blacklist Save Error]', e);
+      }
+
+      return res.json({ success: true, message: 'Lead excluído permanentemente com sucesso' });
     } catch (err: unknown) {
       console.error('[Delete Lead Error]', err);
       return res.status(500).json({ error: 'Erro ao excluir lead' });
