@@ -65,7 +65,7 @@ export const CookiesPage: React.FC = () => {
                 </div>
                 <div className="p-4 rounded-xl bg-[#EFE6DC] border border-[#E5DAD0]">
                   <h3 className="font-semibold text-[#241E1B] text-sm">c) Publicidade e mensuração de anúncios</h3>
-                  <p className="text-xs text-[#5C4B44] mt-1">Com autorização de Publicidade, usamos Meta Pixel e API de Conversões para compartilhar eventos institucionais, IP, dados do navegador e identificadores de clique e cookies (_fbp e _fbc) com a Meta. Ao enviar um formulário, nome, e-mail e telefone podem ser normalizados e enviados com hash para correspondência. Hash não torna esses dados anônimos. Os eventos também podem refletir etapas de qualificação do contato no CRM. A autorização para atendimento não substitui a de Publicidade.</p>
+                  <p className="text-xs text-[#5C4B44] mt-1">Com autorização de Publicidade, usamos Meta Pixel e API de Conversões para compartilhar eventos institucionais, IP, dados do navegador e identificadores de clique e cookies (_fbp e _fbc) com a Meta. Ao enviar um formulário, nome, e-mail e telefone podem ser normalizados e enviados com hash para correspondência. Hash não torna esses dados anônimos. Os eventos também podem refletir etapas de qualificação do contato no CRM. O Google Ads recebe a confirmação do formulário e, por importação programada, o identificador do clique e o horário da primeira qualificação no CRM, sem nome, telefone, e-mail, tratamento de interesse ou mensagens. A autorização para atendimento não substitui a de Publicidade.</p>
                 </div>
               </div>
             </section>

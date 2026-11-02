@@ -34,6 +34,7 @@ export interface TrafficData {
   keyword?: string;
   fbclid?: string;
   gclid?: string;
+  clickIdType?: 'gclid' | 'gbraid' | 'wbraid';
   referrer: string;
   landingPage: string;
   capturedAt: string;
@@ -84,7 +85,8 @@ export function initTrafficAttribution(): TrafficData {
   const utmTerm = (urlParams.get('utm_term') || '').trim();
   const utmContent = (urlParams.get('utm_content') || '').trim();
   const fbclid = (urlParams.get('fbclid') || '').trim();
-  const gclid = (urlParams.get('gclid') || urlParams.get('gbraid') || urlParams.get('wbraid') || '').trim();
+  const clickIdType = (['gclid','gbraid','wbraid'] as const).find(key=>Boolean(urlParams.get(key)?.trim()));
+  const gclid = clickIdType ? (urlParams.get(clickIdType)||'').trim() : '';
   const referrer = typeof document !== 'undefined' ? document.referrer || '' : '';
   const landingPage = window.location.pathname + window.location.search;
 
@@ -197,6 +199,7 @@ export function initTrafficAttribution(): TrafficData {
     content: knownParameter(utmContent) || undefined,
     fbclid: fbclid || undefined,
     gclid: gclid || undefined,
+    clickIdType,
     referrer,
     landingPage,
     capturedAt: new Date().toISOString()

@@ -1,3 +1,4 @@
+import {GOOGLE_QUALIFICATION_ASSIGNMENTS} from './crm-google.mjs';
 export const CRM_VERSION = 'nido-crm-sync-v3';
 const ALLOWED = new Set([13625351,14680687]);
 const STATES = new Map([
@@ -127,11 +128,11 @@ export function createKommoRepository(pool,list) {
     list,
     async apply(id,k,status,options={}) {
       if(options.rebind) {
-        const [result]=await pool.query(`UPDATE nido_leads SET status=?, kommo_lead_id=?, kommo_status_id=?, kommo_updated_at=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL AND kommo_lead_id=? AND COALESCE(kommo_updated_at,0)=?`,
+        const [result]=await pool.query(`UPDATE nido_leads SET status=?, kommo_lead_id=?, kommo_status_id=?, kommo_updated_at=?, ${GOOGLE_QUALIFICATION_ASSIGNMENTS}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL AND kommo_lead_id=? AND COALESCE(kommo_updated_at,0)=?`,
           [status,String(k.id),String(k.status_id),Number(k.updated_at),id,String(options.expectedKommoId),Number(options.expectedUpdatedAt)]);
         return result.affectedRows>0;
       }
-      const [result]=await pool.query(`UPDATE nido_leads SET status=?, kommo_lead_id=?, kommo_status_id=?, kommo_updated_at=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL AND (kommo_lead_id IS NULL OR kommo_lead_id='' OR kommo_lead_id=?) AND COALESCE(kommo_updated_at,0)<=?`,
+      const [result]=await pool.query(`UPDATE nido_leads SET status=?, kommo_lead_id=?, kommo_status_id=?, kommo_updated_at=?, ${GOOGLE_QUALIFICATION_ASSIGNMENTS}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL AND (kommo_lead_id IS NULL OR kommo_lead_id='' OR kommo_lead_id=?) AND COALESCE(kommo_updated_at,0)<=?`,
         [status,String(k.id),String(k.status_id),Number(k.updated_at),id,String(k.id),Number(k.updated_at)]);
       return result.affectedRows>0;
     },

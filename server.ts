@@ -13,6 +13,7 @@ import { normalizeMetaContext, initCrmMetaOutbox, createCrmMetaQueue } from './c
 import { normalizeLocation, normalizeAttribution, parseContext, validCoordinates } from './tracking-context.mjs';
 import { initAnalyticsDatabase, recordAnalyticsEvent, getAnalyticsStats } from './analytics-engine.mjs';
 import { reverseGeocodeCoordinates } from './geocoder.mjs';
+import {normalizeGoogleContext,createGoogleLedger,registerGoogleFeed,GOOGLE_QUALIFICATION_ASSIGNMENTS} from './crm-google.mjs';
 
 dotenv.config();
 
@@ -615,6 +616,31 @@ async function startServer() {
   }
 
   let crmMetaQueue: ReturnType<typeof createCrmMetaQueue> | null = null;
+  let crmGoogleLedger: ReturnType<typeof createGoogleLedger> | null = null;
+  function googleLedger() {
+    if(!dbPool)throw new Error('Google conversion database unavailable');
+    if(!crmGoogleLedger)crmGoogleLedger=createGoogleLedger({pool:dbPool,isAllowed:(lead:any,eventAt:number)=>isStoredMarketingAllowed(dbPool,lead,eventAt)});
+    return crmGoogleLedger;
+  }
+  async function enqueueQualifiedGoogle(id:string){
+    if(process.env.NODE_ENV!=='production')return {status:'disabled'};
+    try{return await googleLedger().qualify(id);}
+    catch{console.warn('[CRM Google] Qualification persistence pending.');return {status:'unavailable'};}
+  }
+  async function processCrmGoogleLedger(){
+    if(!isDbReady||!dbPool||process.env.NODE_ENV!=='production'||!process.env.GOOGLE_ADS_FEED_SECRET)return;
+    await googleLedger().init();
+    let cursor='';
+    for(;;){
+      const [rows]=await dbPool.query<mysql.RowDataPacket[]>(`SELECT id FROM nido_leads WHERE deleted_at IS NULL
+        AND google_qualified_at IS NOT NULL AND id>? AND NOT EXISTS
+        (SELECT 1 FROM nido_google_qualifications q WHERE q.lead_id=nido_leads.id) ORDER BY id LIMIT 1000`,[cursor]);
+      for(const row of rows)await enqueueQualifiedGoogle(row.id);
+      if(rows.length<1000)break;cursor=rows[rows.length-1].id;
+    }
+  }
+  registerGoogleFeed(app,{ledger:{rows:async()=>googleLedger().rows()},
+    getSecret:()=>process.env.GOOGLE_ADS_FEED_SECRET,isProduction:()=>process.env.NODE_ENV==='production'});
   let metaQueueStarting: Promise<void> | null = null;
   async function ensureMetaQueue(): Promise<void> {
     if (crmMetaQueue || !dbPool) return;
@@ -698,7 +724,7 @@ async function startServer() {
         await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
       } catch {}
 
-      for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0', 'location_context JSON NULL', 'attribution_context JSON NULL']) {
+      for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0', 'location_context JSON NULL', 'attribution_context JSON NULL', 'google_qualified_at VARCHAR(30) NULL', 'google_qualification_context JSON NULL']) {
         try { await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN ${definition}`); }
         catch (error: any) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
       }
@@ -719,6 +745,9 @@ async function startServer() {
   void enrichExistingLeadsWithAddress().catch(() => {});
   const metaDeliveryTimer=setInterval(()=>{void processCrmMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox retry pending.'));},30000);
   metaDeliveryTimer.unref();
+  const googleDeliveryTimer=setInterval(()=>{void processCrmGoogleLedger().catch(()=>console.warn('[CRM Google] Qualification retry pending.'));},30000);
+  googleDeliveryTimer.unref();
+  void processCrmGoogleLedger().catch(()=>{});
   void processCrmMetaQueue().catch(()=>{});
   let databaseRetry: Promise<void> | null = null;
   let analyticsRetry: Promise<void> | null = null;
@@ -973,10 +1002,13 @@ async function startServer() {
           l.createdAt ? new Date(l.createdAt) : new Date(),
           l.updatedAt ? new Date(l.updatedAt) : new Date(),
           JSON.stringify(locContext),
-          JSON.stringify(normalizeAttribution(l.attribution || {}))
+          JSON.stringify({...normalizeAttribution(l.attribution || {}),
+            meta:normalizeMetaContext(parseContext(l.attribution).meta),
+            google:normalizeGoogleContext(parseContext(l.attribution).google,parseContext(l.attribution).google)})
         ]);
       } catch (err) {
         console.warn('[MySQL Insert Lead Warning]', err);
+        throw err;
       }
     }
 
@@ -1004,11 +1036,12 @@ async function startServer() {
           const jsonKeys = ['procedureCycles','sessionJourney','viewedTreatments','attribution','locationContext'];
           const values = entries.map(([key,value]) => jsonKeys.includes(key) ? JSON.stringify(value) : key === 'metaLeadSentAt' ? (value ? new Date(value) : null) : key === 'metaLeadSent' ? Number(Boolean(value)) : value);
           const [result] = await pool.query<mysql.ResultSetHeader>(
-            `UPDATE nido_leads SET ${entries.map(([key])=>`${columns[key]}=?`).join(',')}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`, [...values,id]);
+            `UPDATE nido_leads SET ${entries.map(([key])=>`${columns[key]}=?`).join(',')}, ${GOOGLE_QUALIFICATION_ASSIGNMENTS}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`, [...values,id]);
           mysqlSuccess = result.affectedRows > 0;
         }
       } catch (err) {
         console.warn('[MySQL Update Lead Warning]', err);
+        throw err;
       }
     }
 
@@ -1026,7 +1059,7 @@ async function startServer() {
     list: readLeads,
     apply: async (id: string, k: any, status: string, options: any = {}) => {
       const applied=await createKommoRepository(requireLeadDatabase(),readLeads).apply(id,k,status,options);
-      if(applied) {await enqueueQualifiedMeta(id);void crmMetaQueue?.flush().catch(()=>{});}
+      if(applied) {await enqueueQualifiedMeta(id);await enqueueQualifiedGoogle(id);void crmMetaQueue?.flush().catch(()=>{});}
       return applied;
     },
     remove: async (id: string) => createKommoRepository(requireLeadDatabase(), readLeads).remove(id)
@@ -1130,7 +1163,9 @@ async function startServer() {
           console.warn('[Geocode Error on Lead Creation]', geoErr);
         }
       }
-      const attribution = {...normalizeAttribution({...req.body.attribution, campaign:trafficCampaign, source:trafficSource, medium:trafficMedium, content:trafficContent, term:trafficTerm}),meta:normalizeMetaContext(req.body.metaContext,{ip:extractRealClientIp(req),userAgent:req.headers['user-agent'] || ''})};
+      const productionGoogleRequest=process.env.NODE_ENV==='production'&&['nidoestetica.com.br','www.nidoestetica.com.br'].includes(req.hostname);
+      const attribution = {...normalizeAttribution({...req.body.attribution, campaign:trafficCampaign, source:trafficSource, medium:trafficMedium, content:trafficContent, term:trafficTerm}),meta:normalizeMetaContext(req.body.metaContext,{ip:extractRealClientIp(req),userAgent:req.headers['user-agent'] || ''}),
+        google:productionGoogleRequest?normalizeGoogleContext(req.body.attribution,req.body.metaContext):null};
 
       const cleanDigitsPhone = normalizedPhone(phone);
       const leads = await readLeads();
@@ -1414,8 +1449,9 @@ async function startServer() {
       const updated = await updateLeadFields(id, {status,notes});
       if (!updated) return res.status(404).json({success:false,error:'Lead não encontrado'});
       const metaDelivery=await enqueueQualifiedMeta(id);
+      const googleDelivery=await enqueueQualifiedGoogle(id);
       void crmMetaQueue?.flush().catch(()=>{});
-      return res.json({ success: true, lead: leads[index],metaDelivery });
+      return res.json({ success: true, lead: leads[index],metaDelivery,googleDelivery });
     } catch (err: unknown) {
       console.error('[Update Lead Error]', err);
       return res.status(500).json({ error: 'Erro ao atualizar lead' });
