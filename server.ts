@@ -10,8 +10,9 @@ import mysql from 'mysql2/promise';
 import { CRM_VERSION, normalizedPhone, synchronizeKommo, receiveKommoWebhook, createKommoRepository } from './crm-sync.mjs';
 import { sendMetaConversionEvent, getMetaDispatchDiagnostics } from './meta-capi.mjs';
 import { normalizeMetaContext, initCrmMetaOutbox, createCrmMetaQueue } from './crm-meta.mjs';
-import { normalizeLocation, normalizeAttribution, parseContext } from './tracking-context.mjs';
+import { normalizeLocation, normalizeAttribution, parseContext, validCoordinates } from './tracking-context.mjs';
 import { initAnalyticsDatabase, recordAnalyticsEvent, getAnalyticsStats } from './analytics-engine.mjs';
+import { reverseGeocodeCoordinates } from './geocoder.mjs';
 
 dotenv.config();
 
@@ -549,6 +550,9 @@ async function startServer() {
     neighborhood?: string;
     latitude?: number;
     longitude?: number;
+    road?: string;
+    houseNumber?: string;
+    displayAddress?: string;
     viewedTreatments?: string[];
     sessionJourney?: {
       startedAt?: string;
@@ -638,7 +642,9 @@ async function startServer() {
   app.get('/api/meta/crm-status',async(_req: Request,res: Response)=>{
     try {
       await ensureMetaQueue();
-      const [rows]=await requireLeadDatabase().query<mysql.RowDataPacket[]>('SELECT state,COUNT(*) AS total FROM nido_meta_outbox GROUP BY state');
+      const pool = requireLeadDatabase();
+      if (!pool) return res.json({version:'nido-crm-meta-v1',ready:false,counts:{}});
+      const [rows]=await pool.query<mysql.RowDataPacket[]>('SELECT state,COUNT(*) AS total FROM nido_meta_outbox GROUP BY state');
       return res.json({version:'nido-crm-meta-v1',ready:Boolean(crmMetaQueue),counts:Object.fromEntries(rows.map(r=>[r.state,Number(r.total)]))});
     } catch {return res.status(503).json({ready:false,error:'Qualification queue unavailable'});}
   });
@@ -710,6 +716,7 @@ async function startServer() {
 
   // Trigger table check on boot and await
   await initDatabase().catch(console.error);
+  void enrichExistingLeadsWithAddress().catch(() => {});
   const metaDeliveryTimer=setInterval(()=>{void processCrmMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox retry pending.'));},30000);
   metaDeliveryTimer.unref();
   void processCrmMetaQueue().catch(()=>{});
@@ -719,134 +726,277 @@ async function startServer() {
   app.use(['/api/leads', '/api/integrations/kommo'], async (_req, res, next) => {
     if (!isDbReady) {
       if (!databaseRetry) databaseRetry = initDatabase().finally(() => { databaseRetry = null; });
-      await databaseRetry;
+      await databaseRetry.catch(() => {});
     }
-    if (!isDbReady) return res.status(503).json({success:false,error:'CRM indisponível: não foi possível conectar ao MySQL.'});
     next();
   });
 
   app.use('/api/analytics', async (_req, res, next) => {
     if (!isAnalyticsDbReady) {
       if (!analyticsRetry) analyticsRetry = initAnalyticsTable().finally(() => { analyticsRetry = null; });
-      await analyticsRetry;
+      await analyticsRetry.catch(() => {});
     }
-    if (!isAnalyticsDbReady) return res.status(503).json({success:false,error:'Analytics indisponível: não foi possível conectar ao MySQL.'});
     next();
   });
 
-  function requireLeadDatabase(): mysql.Pool {
-    if (!dbPool || !isDbReady) throw new Error('Banco de dados do CRM indisponível');
+  let isEnrichingLeads = false;
+  async function enrichExistingLeadsWithAddress(): Promise<void> {
+    if (!dbPool || !isDbReady || isEnrichingLeads) return;
+    isEnrichingLeads = true;
+    try {
+      const [rows] = await dbPool.query<any[]>(
+        "SELECT id, latitude, longitude, location_context, city, neighborhood FROM nido_leads WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (city = 'Não informada' OR neighborhood = 'Não informada' OR city IS NULL)"
+      );
+      for (const row of rows) {
+        const lat = Number(row.latitude);
+        const lon = Number(row.longitude);
+        if (validCoordinates(lat, lon)) {
+          const geo = await reverseGeocodeCoordinates(lat, lon);
+          if (geo) {
+            const locContext = parseContext(row.location_context);
+            locContext.city = geo.city;
+            locContext.state = geo.state;
+            locContext.neighborhood = geo.neighborhood;
+            locContext.displayAddress = geo.displayAddress;
+            locContext.road = geo.road;
+            locContext.houseNumber = geo.houseNumber;
+            locContext.addressSource = 'geocoder';
+            await dbPool.query(
+              "UPDATE nido_leads SET city = ?, state = ?, neighborhood = ?, location_context = ? WHERE id = ?",
+              [geo.city, geo.state, geo.neighborhood, JSON.stringify(locContext), row.id]
+            );
+            console.log(`[Lead Address Enriched] ${row.id} -> ${geo.neighborhood}, ${geo.city} - ${geo.state}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Enrich Existing Leads Warning]', err);
+    } finally {
+      isEnrichingLeads = false;
+    }
+  }
+
+  function requireLeadDatabase(): mysql.Pool | null {
+    if (!dbPool || !isDbReady) return null;
     return dbPool;
   }
+
+  async function saveLeadsToFile(leads: StoredLead[]) {
+    try {
+      await ensureLeadsFile();
+      await fsp.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('Error saving leads to file:', e);
+    }
+  }
+
   async function readLeads(): Promise<StoredLead[]> {
+    let mysqlRows: any[] = [];
     const pool = requireLeadDatabase();
-    const [rows] = await pool.query<any[]>('SELECT * FROM nido_leads WHERE deleted_at IS NULL ORDER BY created_at DESC');
-        return rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          phone: r.phone,
-          email: r.email,
-          serviceInterest: r.service_interest,
-          ctaLocation: r.cta_location,
-          message: r.message,
-          trafficChannel: r.traffic_channel,
-          trafficSource: r.traffic_source,
-          trafficMedium: r.traffic_medium,
-          trafficCampaign: r.traffic_campaign,
-          trafficTerm: r.traffic_term,
-          trafficContent: r.traffic_content,
-          fbclid: r.fbclid,
-          gclid: r.gclid,
-          referrer: r.referrer,
-          pagePath: r.page_path,
-          clientIp: r.client_ip,
-          ...normalizeLocation(parseContext(r.location_context), false),
-          attribution: normalizeAttribution(r.attribution_context ? parseContext(r.attribution_context) : {
-            campaign:r.traffic_campaign,source:r.traffic_source,medium:r.traffic_medium,content:r.traffic_content,term:r.traffic_term,
-            campaignId:/^\d+$/.test(r.traffic_campaign||'') ? r.traffic_campaign : '',
-            adSet:/^\d+$/.test(r.traffic_term||'') ? '' : r.traffic_term,
-            adSetId:/^\d+$/.test(r.traffic_term||'') && String(r.traffic_channel||'').includes('Meta') ? r.traffic_term : '',
-            adId:/^\d+$/.test(r.traffic_content||'') ? r.traffic_content : '',
-            adName:/^\d+$/.test(r.traffic_content||'') ? '' : r.traffic_content
-          }),
-          viewedTreatments: typeof r.viewed_treatments === 'string' ? JSON.parse(r.viewed_treatments || '[]') : (r.viewed_treatments || []),
-          sessionJourney: typeof r.session_journey === 'string' ? JSON.parse(r.session_journey || 'null') : (r.session_journey || undefined),
-          procedureCycles: typeof r.procedure_cycles === 'string' ? JSON.parse(r.procedure_cycles || '[]') : (r.procedure_cycles || []),
-          status: r.status || 'novo',
-          notes: r.notes || '',
-          metaLeadSent: Boolean(r.meta_lead_sent),
-          metaLeadSentAt: r.meta_lead_sent_at ? new Date(r.meta_lead_sent_at).toISOString() : undefined,
-          kommoLeadId: r.kommo_lead_id,
-          kommoStatusId: r.kommo_status_id,
-          kommoUpdatedAt: Number(r.kommo_updated_at) || 0,
-          createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
-          updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString()
-        }));
+    if (pool) {
+      try {
+        const [rows] = await pool.query<any[]>('SELECT * FROM nido_leads WHERE deleted_at IS NULL ORDER BY created_at DESC');
+        mysqlRows = rows || [];
+      } catch (err) {
+        console.warn('[MySQL Read Leads Fallback] Using local file leads.json:', err);
+      }
+    }
+
+    let fileLeads: StoredLead[] = [];
+    try {
+      await ensureLeadsFile();
+      const content = await fsp.readFile(LEADS_FILE, 'utf-8');
+      fileLeads = JSON.parse(content || '[]');
+    } catch (e) {
+      console.warn('[File Read Leads Fallback Error]', e);
+    }
+
+    const leadMap = new Map<string, StoredLead>();
+    for (const fl of fileLeads) {
+      if (fl && fl.id) leadMap.set(fl.id, fl);
+    }
+
+    for (const r of mysqlRows) {
+      const locContext = parseContext(r.location_context);
+      const normLoc = normalizeLocation(locContext, false);
+      const city = (r.city && r.city !== 'Não informada') ? r.city : (normLoc.city !== 'Não informada' ? normLoc.city : (locContext.city && locContext.city !== 'Não informada' ? locContext.city : 'Não informada'));
+      const neighborhood = (r.neighborhood && r.neighborhood !== 'Não informada') ? r.neighborhood : (normLoc.neighborhood !== 'Não informada' ? normLoc.neighborhood : (locContext.neighborhood && locContext.neighborhood !== 'Não informada' ? locContext.neighborhood : 'Não informada'));
+      const state = (r.state && r.state !== 'Não informada') ? r.state : (normLoc.state !== 'Não informada' ? normLoc.state : (locContext.state && locContext.state !== 'Não informada' ? locContext.state : 'Não informada'));
+      const displayAddress = locContext.displayAddress || (neighborhood !== 'Não informada' && city !== 'Não informada' ? `${neighborhood}, ${city} - ${state}` : undefined);
+
+      const parsedLead: StoredLead = {
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        email: r.email,
+        serviceInterest: r.service_interest,
+        ctaLocation: r.cta_location,
+        message: r.message,
+        trafficChannel: r.traffic_channel,
+        trafficSource: r.traffic_source,
+        trafficMedium: r.traffic_medium,
+        trafficCampaign: r.traffic_campaign,
+        trafficTerm: r.traffic_term,
+        trafficContent: r.traffic_content,
+        fbclid: r.fbclid,
+        gclid: r.gclid,
+        referrer: r.referrer,
+        pagePath: r.page_path,
+        clientIp: r.client_ip,
+        ...normLoc,
+        city,
+        neighborhood,
+        state,
+        latitude: normLoc.latitude ?? (r.latitude != null ? Number(r.latitude) : undefined),
+        longitude: normLoc.longitude ?? (r.longitude != null ? Number(r.longitude) : undefined),
+        road: locContext.road,
+        houseNumber: locContext.houseNumber,
+        displayAddress,
+        attribution: normalizeAttribution(r.attribution_context ? parseContext(r.attribution_context) : {
+          campaign:r.traffic_campaign,source:r.traffic_source,medium:r.traffic_medium,content:r.traffic_content,term:r.traffic_term,
+          campaignId:/^\d+$/.test(r.traffic_campaign||'') ? r.traffic_campaign : '',
+          adSet:/^\d+$/.test(r.traffic_term||'') ? '' : r.traffic_term,
+          adSetId:/^\d+$/.test(r.traffic_term||'') && String(r.traffic_channel||'').includes('Meta') ? r.traffic_term : '',
+          adId:/^\d+$/.test(r.traffic_content||'') ? r.traffic_content : '',
+          adName:/^\d+$/.test(r.traffic_content||'') ? '' : r.traffic_content
+        }),
+        viewedTreatments: typeof r.viewed_treatments === 'string' ? JSON.parse(r.viewed_treatments || '[]') : (r.viewed_treatments || []),
+        sessionJourney: typeof r.session_journey === 'string' ? JSON.parse(r.session_journey || 'null') : (r.session_journey || undefined),
+        procedureCycles: typeof r.procedure_cycles === 'string' ? JSON.parse(r.procedure_cycles || '[]') : (r.procedure_cycles || []),
+        status: r.status || 'novo',
+        notes: r.notes || '',
+        metaLeadSent: Boolean(r.meta_lead_sent),
+        metaLeadSentAt: r.meta_lead_sent_at ? new Date(r.meta_lead_sent_at).toISOString() : undefined,
+        kommoLeadId: r.kommo_lead_id,
+        kommoStatusId: r.kommo_status_id,
+        kommoUpdatedAt: Number(r.kommo_updated_at) || 0,
+        createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+        updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : new Date().toISOString()
+      };
+      leadMap.set(r.id, parsedLead);
+    }
+
+    const combinedLeads = Array.from(leadMap.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    if (combinedLeads.length > 0) {
+      void saveLeadsToFile(combinedLeads);
+    }
+
+    const needsEnrichment = combinedLeads.some(r => r.latitude && r.longitude && (!r.city || r.city === 'Não informada' || !r.neighborhood || r.neighborhood === 'Não informada'));
+    if (needsEnrichment && !isEnrichingLeads) {
+      void enrichExistingLeadsWithAddress().catch(() => {});
+    }
+
+    return combinedLeads;
   }
 
   async function insertLead(l: StoredLead): Promise<void> {
     const pool = requireLeadDatabase();
-          await pool.query(`
-            INSERT INTO nido_leads (
-              id, name, phone, email, service_interest, cta_location, message,
-              traffic_channel, traffic_source, traffic_medium, traffic_campaign,
-              traffic_term, traffic_content, fbclid, gclid, referrer, page_path,
-              client_ip, city, state, neighborhood, latitude, longitude,
-              viewed_treatments, session_journey, procedure_cycles, status, notes, meta_lead_sent, meta_lead_sent_at,
-              kommo_lead_id, kommo_status_id, created_at, updated_at, location_context, attribution_context
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            l.id,
-            l.name || '',
-            l.phone || '',
-            l.email || '',
-            l.serviceInterest || '',
-            l.ctaLocation || '',
-            l.message || '',
-            l.trafficChannel || 'Direto',
-            l.trafficSource || '',
-            l.trafficMedium || '',
-            l.trafficCampaign || '',
-            l.trafficTerm || '',
-            l.trafficContent || '',
-            l.fbclid || '',
-            l.gclid || '',
-            l.referrer || '',
-            l.pagePath || '/',
-            l.clientIp || '',
-            l.city || 'Não informada',
-            l.state || 'Não informada',
-            l.neighborhood || 'Não informada',
-            l.latitude ?? null,
-            l.longitude ?? null,
-            JSON.stringify(l.viewedTreatments || []),
-            l.sessionJourney ? JSON.stringify(l.sessionJourney) : null,
-            JSON.stringify(l.procedureCycles || []),
-            l.status || 'novo',
-            l.notes || '',
-            l.metaLeadSent ? 1 : 0,
-            l.metaLeadSentAt ? new Date(l.metaLeadSentAt) : null,
-            l.kommoLeadId || null,
-            l.kommoStatusId || null,
-            l.createdAt ? new Date(l.createdAt) : new Date(),
-            l.updatedAt ? new Date(l.updatedAt) : new Date(),
-            JSON.stringify(normalizeLocation(l, false)),
-            JSON.stringify(normalizeAttribution(l.attribution || {}))
-          ]);
+    if (pool) {
+      try {
+        const locContext = {
+          ...normalizeLocation(l, false),
+          city: l.city,
+          state: l.state,
+          neighborhood: l.neighborhood,
+          road: l.road,
+          houseNumber: l.houseNumber,
+          displayAddress: l.displayAddress,
+          addressSource: l.displayAddress ? 'geocoder' : l.locationSource
+        };
+
+        await pool.query(`
+          INSERT INTO nido_leads (
+            id, name, phone, email, service_interest, cta_location, message,
+            traffic_channel, traffic_source, traffic_medium, traffic_campaign,
+            traffic_term, traffic_content, fbclid, gclid, referrer, page_path,
+            client_ip, city, state, neighborhood, latitude, longitude,
+            viewed_treatments, session_journey, procedure_cycles, status, notes, meta_lead_sent, meta_lead_sent_at,
+            kommo_lead_id, kommo_status_id, created_at, updated_at, location_context, attribution_context
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          l.id,
+          l.name || '',
+          l.phone || '',
+          l.email || '',
+          l.serviceInterest || '',
+          l.ctaLocation || '',
+          l.message || '',
+          l.trafficChannel || 'Direto',
+          l.trafficSource || '',
+          l.trafficMedium || '',
+          l.trafficCampaign || '',
+          l.trafficTerm || '',
+          l.trafficContent || '',
+          l.fbclid || '',
+          l.gclid || '',
+          l.referrer || '',
+          l.pagePath || '/',
+          l.clientIp || '',
+          l.city || 'Não informada',
+          l.state || 'Não informada',
+          l.neighborhood || 'Não informada',
+          l.latitude ?? null,
+          l.longitude ?? null,
+          JSON.stringify(l.viewedTreatments || []),
+          l.sessionJourney ? JSON.stringify(l.sessionJourney) : null,
+          JSON.stringify(l.procedureCycles || []),
+          l.status || 'novo',
+          l.notes || '',
+          l.metaLeadSent ? 1 : 0,
+          l.metaLeadSentAt ? new Date(l.metaLeadSentAt) : null,
+          l.kommoLeadId || null,
+          l.kommoStatusId || null,
+          l.createdAt ? new Date(l.createdAt) : new Date(),
+          l.updatedAt ? new Date(l.updatedAt) : new Date(),
+          JSON.stringify(locContext),
+          JSON.stringify(normalizeAttribution(l.attribution || {}))
+        ]);
+      } catch (err) {
+        console.warn('[MySQL Insert Lead Warning]', err);
+      }
+    }
+
+    const current = await readLeads();
+    const existingIdx = current.findIndex(item => item.id === l.id);
+    if (existingIdx !== -1) {
+      current[existingIdx] = l;
+    } else {
+      current.unshift(l);
+    }
+    await saveLeadsToFile(current);
   }
 
   async function updateLeadFields(id: string, changes: Record<string, any>): Promise<boolean> {
-    const columns: Record<string, string> = {
-      status:'status', notes:'notes', metaLeadSent:'meta_lead_sent', metaLeadSentAt:'meta_lead_sent_at',
-      serviceInterest:'service_interest', procedureCycles:'procedure_cycles', sessionJourney:'session_journey', viewedTreatments:'viewed_treatments', attribution:'attribution_context', locationContext:'location_context'
-    };
-    const entries = Object.entries(changes).filter(([key,value]) => columns[key] && value !== undefined);
-    if (!entries.length) return true;
-    const jsonKeys = ['procedureCycles','sessionJourney','viewedTreatments','attribution','locationContext'];
-    const values = entries.map(([key,value]) => jsonKeys.includes(key) ? JSON.stringify(value) : key === 'metaLeadSentAt' ? (value ? new Date(value) : null) : key === 'metaLeadSent' ? Number(Boolean(value)) : value);
-    const [result] = await requireLeadDatabase().query<mysql.ResultSetHeader>(
-      `UPDATE nido_leads SET ${entries.map(([key])=>`${columns[key]}=?`).join(',')}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`, [...values,id]);
-    return result.affectedRows > 0;
+    const pool = requireLeadDatabase();
+    let mysqlSuccess = false;
+    if (pool) {
+      try {
+        const columns: Record<string, string> = {
+          status:'status', notes:'notes', metaLeadSent:'meta_lead_sent', metaLeadSentAt:'meta_lead_sent_at',
+          serviceInterest:'service_interest', procedureCycles:'procedure_cycles', sessionJourney:'session_journey', viewedTreatments:'viewed_treatments', attribution:'attribution_context', locationContext:'location_context'
+        };
+        const entries = Object.entries(changes).filter(([key,value]) => columns[key] && value !== undefined);
+        if (entries.length > 0) {
+          const jsonKeys = ['procedureCycles','sessionJourney','viewedTreatments','attribution','locationContext'];
+          const values = entries.map(([key,value]) => jsonKeys.includes(key) ? JSON.stringify(value) : key === 'metaLeadSentAt' ? (value ? new Date(value) : null) : key === 'metaLeadSent' ? Number(Boolean(value)) : value);
+          const [result] = await pool.query<mysql.ResultSetHeader>(
+            `UPDATE nido_leads SET ${entries.map(([key])=>`${columns[key]}=?`).join(',')}, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`, [...values,id]);
+          mysqlSuccess = result.affectedRows > 0;
+        }
+      } catch (err) {
+        console.warn('[MySQL Update Lead Warning]', err);
+      }
+    }
+
+    const current = await readLeads();
+    const idx = current.findIndex(item => item.id === id);
+    if (idx !== -1) {
+      Object.assign(current[idx], changes, { updatedAt: new Date().toISOString() });
+      await saveLeadsToFile(current);
+      return true;
+    }
+    return mysqlSuccess;
   }
 
   const kommoRepo = {
@@ -936,7 +1086,27 @@ async function startServer() {
         ? rawIp[0]
         : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '');
 
-      const verifiedLocation = normalizeLocation(req.body);
+      let verifiedLocation: any = normalizeLocation(req.body);
+      let geocodedAddress: any = null;
+      if (verifiedLocation.geoConsent && validCoordinates(verifiedLocation.latitude, verifiedLocation.longitude)) {
+        try {
+          geocodedAddress = await reverseGeocodeCoordinates(verifiedLocation.latitude, verifiedLocation.longitude);
+          if (geocodedAddress) {
+            verifiedLocation = {
+              ...verifiedLocation,
+              city: geocodedAddress.city,
+              state: geocodedAddress.state,
+              neighborhood: geocodedAddress.neighborhood,
+              displayAddress: geocodedAddress.displayAddress,
+              road: geocodedAddress.road,
+              houseNumber: geocodedAddress.houseNumber,
+              addressSource: 'geocoder'
+            };
+          }
+        } catch (geoErr) {
+          console.warn('[Geocode Error on Lead Creation]', geoErr);
+        }
+      }
       const attribution = {...normalizeAttribution({...req.body.attribution, campaign:trafficCampaign, source:trafficSource, medium:trafficMedium, content:trafficContent, term:trafficTerm}),meta:normalizeMetaContext(req.body.metaContext,{ip:extractRealClientIp(req),userAgent:req.headers['user-agent'] || ''})};
 
       const cleanDigitsPhone = normalizedPhone(phone);
@@ -1055,9 +1225,12 @@ async function startServer() {
       // Push lead to Kommo CRM API
       if (!leadToSave.kommoLeadId) pushLeadToKommo(leadToSave).then(async (kommoResult) => {
         if (kommoResult && kommoResult.kommoLeadId) {
-          await requireLeadDatabase().query(
-            'UPDATE nido_leads SET kommo_lead_id=? WHERE id=? AND deleted_at IS NULL AND (kommo_lead_id IS NULL OR kommo_lead_id=?)',
-            [String(kommoResult.kommoLeadId),leadToSave.id,String(kommoResult.kommoLeadId)]);
+          const pool = requireLeadDatabase();
+          if (pool) {
+            await pool.query(
+              'UPDATE nido_leads SET kommo_lead_id=? WHERE id=? AND deleted_at IS NULL AND (kommo_lead_id IS NULL OR kommo_lead_id=?)',
+              [String(kommoResult.kommoLeadId),leadToSave.id,String(kommoResult.kommoLeadId)]);
+          }
         }
       }).catch((err) => {
         console.warn('[Async Kommo Lead Sync Warning]', err);

@@ -387,10 +387,20 @@ export const LeadsGeoMap: React.FC<LeadsGeoMapProps> = ({ leads, onSelectLead })
 
               <div className="flex items-center justify-between">
                 <span className="text-[#8C7359]">Localização:</span>
-                <span className="font-medium text-[#1F1916]">
-                  {selectedMapLead.neighborhood || selectedMapLead.city}, {selectedMapLead.state}
+                <span className="font-semibold text-[#1F1916] text-right truncate max-w-[220px]" title={selectedMapLead.displayAddress || `${selectedMapLead.neighborhood || selectedMapLead.city}, ${selectedMapLead.state}`}>
+                  {selectedMapLead.neighborhood && selectedMapLead.neighborhood !== 'Não informada'
+                    ? `${selectedMapLead.neighborhood}, ${selectedMapLead.city || 'São Paulo'} - ${selectedMapLead.state || 'SP'}`
+                    : selectedMapLead.city && selectedMapLead.city !== 'Não informada'
+                    ? `${selectedMapLead.city} - ${selectedMapLead.state || 'SP'}`
+                    : (selectedMapLead.displayAddress || 'Localização autorizada')}
                 </span>
               </div>
+              {selectedMapLead.displayAddress && (
+                <div className="text-[11px] text-[#5C4B44] bg-[#FAF6F0] p-2 rounded-lg border border-[#E5DAD0]/80">
+                  <span className="font-bold text-[#1F1916] block">Endereço Identificado (GPS):</span>
+                  <span className="font-medium">{selectedMapLead.displayAddress}</span>
+                </div>
+              )}
             </div>
 
             {/* Quick Actions */}

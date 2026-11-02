@@ -63,6 +63,9 @@ export interface StoredLead {
   neighborhood?: string;
   latitude?: number;
   longitude?: number;
+  road?: string;
+  houseNumber?: string;
+  displayAddress?: string;
   viewedTreatments?: string[];
   sessionJourney?: {
     startedAt?: string;
@@ -1337,7 +1340,11 @@ export const AdminCRMPage: React.FC = () => {
                 {selectedLead.city && (
                   <span className="inline-flex items-center gap-1 text-xs text-[#8C7359] font-medium bg-[#FAF6F0] px-2 py-0.5 rounded-md border border-[#E5DAD0]">
                     <MapPin className="w-3 h-3 text-[#8C7359]" />
-                    {selectedLead.neighborhood || selectedLead.city}, {selectedLead.state || 'Não informada'}
+                    {selectedLead.neighborhood && selectedLead.neighborhood !== 'Não informada'
+                      ? `${selectedLead.neighborhood}, ${selectedLead.city || 'São Paulo'} - ${selectedLead.state || 'SP'}`
+                      : selectedLead.city && selectedLead.city !== 'Não informada'
+                      ? `${selectedLead.city} - ${selectedLead.state || 'SP'}`
+                      : (selectedLead.displayAddress || 'Localização autorizada')}
                   </span>
                 )}
               </div>
@@ -1453,19 +1460,35 @@ export const AdminCRMPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                   <div>
                     <span className="text-[#8C7359] block">Bairro:</span>
-                    <span className="font-bold text-[#1F1916]">{selectedLead.neighborhood || 'Não informada'}</span>
+                    <span className="font-bold text-[#1F1916]">
+                      {selectedLead.neighborhood && selectedLead.neighborhood !== 'Não informada' 
+                        ? selectedLead.neighborhood 
+                        : (selectedLead.displayAddress?.split(' - ')[1]?.split(',')[0] || 'Não informada')}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[#8C7359] block">Cidade / UF:</span>
-                    <span className="font-bold text-[#1F1916]">{selectedLead.city} - {selectedLead.state || 'Não informada'}</span>
+                    <span className="font-bold text-[#1F1916]">
+                      {selectedLead.city && selectedLead.city !== 'Não informada' 
+                        ? `${selectedLead.city} - ${selectedLead.state || 'SP'}` 
+                        : (selectedLead.state ? `São Paulo - ${selectedLead.state}` : 'Não informada')}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[#8C7359] block">Coordenadas:</span>
                     <span className="font-mono text-[11px] text-[#66534B]">
-                      {selectedLead.locationSource === 'browser_gps' ? `${selectedLead.latitude?.toFixed(4)}, ${selectedLead.longitude?.toFixed(4)}` : 'Não informada (sem GPS autorizado)'}
+                      {selectedLead.latitude != null && selectedLead.longitude != null 
+                        ? `${Number(selectedLead.latitude).toFixed(4)}, ${Number(selectedLead.longitude).toFixed(4)}` 
+                        : 'Não informada (sem GPS)'}
                     </span>
                   </div>
                 </div>
+                {selectedLead.displayAddress && (
+                  <div className="pt-2 border-t border-[#E5DAD0]/70 text-xs">
+                    <span className="text-[#8C7359] block font-medium">Endereço Identificado (GPS):</span>
+                    <span className="font-bold text-[#1F1916]">{selectedLead.displayAddress}</span>
+                  </div>
+                )}
               </div>
             )}
 

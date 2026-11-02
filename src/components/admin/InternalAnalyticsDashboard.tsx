@@ -23,7 +23,8 @@ import {
   ChevronUp,
   Smartphone,
   Laptop,
-  Car
+  Car,
+  Phone
 } from 'lucide-react';
 
 interface RouteStat {
@@ -114,6 +115,13 @@ export interface VisitorSessionItem {
   actions: VisitorSessionAction[];
   hotScore: number;
   isHotLead: boolean;
+  isLead?: boolean;
+  leadId?: string;
+  leadName?: string;
+  leadPhone?: string;
+  leadEmail?: string;
+  leadStatus?: string;
+  leadServiceInterest?: string;
   lastSeen: string;
 }
 
@@ -145,7 +153,7 @@ export const InternalAnalyticsDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'direcoes' | 'sessoes' | 'rotas' | 'tratamentos' | 'ctas' | 'locais' | 'origens'>('geral');
-  const [sessionFilter, setSessionFilter] = useState<'todos' | 'hot' | 'direcoes' | 'whatsapp'>('todos');
+  const [sessionFilter, setSessionFilter] = useState<'todos' | 'leads' | 'hot' | 'direcoes' | 'whatsapp'>('todos');
   const [sessionSearch, setSessionSearch] = useState('');
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
@@ -178,17 +186,19 @@ export const InternalAnalyticsDashboard: React.FC = () => {
   const filteredSessions = useMemo(() => {
     const list = data?.visitorSessions || [];
     return list.filter((s) => {
+      if (sessionFilter === 'leads' && !s.isLead) return false;
       if (sessionFilter === 'hot' && !s.isHotLead) return false;
       if (sessionFilter === 'direcoes' && !s.actions.some(a => (a.label || '').toLowerCase().match(/maps|waze|uber/))) return false;
       if (sessionFilter === 'whatsapp' && !s.actions.some(a => (a.label || '').toLowerCase().match(/whatsapp|wa\.me/))) return false;
       if (sessionSearch.trim()) {
         const query = sessionSearch.toLowerCase().trim();
+        const matchLead = (s.leadName || '').toLowerCase().includes(query) || (s.leadPhone || '').replace(/\D/g, '').includes(query.replace(/\D/g, ''));
         const matchCity = (s.city || '').toLowerCase().includes(query) || (s.neighborhood || '').toLowerCase().includes(query);
         const matchChannel = (s.trafficChannel || '').toLowerCase().includes(query) || (s.trafficSource || '').toLowerCase().includes(query);
         const matchId = (s.visitorId || '').toLowerCase().includes(query) || (s.sessionId || '').toLowerCase().includes(query);
         const matchActions = s.actions.some(a => (a.label || '').toLowerCase().includes(query));
         const matchSteps = s.steps.some(st => (st.title || st.path || '').toLowerCase().includes(query));
-        if (!matchCity && !matchChannel && !matchId && !matchActions && !matchSteps) return false;
+        if (!matchLead && !matchCity && !matchChannel && !matchId && !matchActions && !matchSteps) return false;
       }
       return true;
     });
@@ -837,7 +847,18 @@ export const InternalAnalyticsDashboard: React.FC = () => {
                     : 'bg-[#FAF6F0] text-[#66534B] hover:bg-[#EFE6DC] border border-[#E5DAD0]'
                 }`}
               >
-                Todos ({visitorSessions?.length || 0})
+                Todos ({data?.visitorSessions?.length || 0})
+              </button>
+              <button
+                onClick={() => setSessionFilter('leads')}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  sessionFilter === 'leads'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Leads Identificados ({data?.visitorSessions?.filter(s => s.isLead).length || 0})</span>
               </button>
               <button
                 onClick={() => setSessionFilter('hot')}
@@ -848,7 +869,7 @@ export const InternalAnalyticsDashboard: React.FC = () => {
                 }`}
               >
                 <Flame className="w-3.5 h-3.5 fill-current" />
-                <span>Hot Leads ({visitorSessions?.filter(s => s.isHotLead).length || 0})</span>
+                <span>Hot Leads ({data?.visitorSessions?.filter(s => s.isHotLead).length || 0})</span>
               </button>
               <button
                 onClick={() => setSessionFilter('direcoes')}
@@ -859,7 +880,7 @@ export const InternalAnalyticsDashboard: React.FC = () => {
                 }`}
               >
                 <Navigation className="w-3 h-3" />
-                <span>Traçou Rota ({visitorSessions?.filter(s => s.actions.some(a => (a.label || '').toLowerCase().match(/maps|waze|uber/))).length || 0})</span>
+                <span>Traçou Rota ({data?.visitorSessions?.filter(s => s.actions.some(a => (a.label || '').toLowerCase().match(/maps|waze|uber/))).length || 0})</span>
               </button>
               <button
                 onClick={() => setSessionFilter('whatsapp')}
@@ -869,7 +890,7 @@ export const InternalAnalyticsDashboard: React.FC = () => {
                     : 'bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100'
                 }`}
               >
-                <span>WhatsApp ({visitorSessions?.filter(s => s.actions.some(a => (a.label || '').toLowerCase().match(/whatsapp|wa\.me/))).length || 0})</span>
+                <span>WhatsApp ({data?.visitorSessions?.filter(s => s.actions.some(a => (a.label || '').toLowerCase().match(/whatsapp|wa\.me/))).length || 0})</span>
               </button>
             </div>
           </div>
@@ -879,7 +900,7 @@ export const InternalAnalyticsDashboard: React.FC = () => {
             <Search className="w-4 h-4 text-[#8C7359] absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Buscar visitante por cidade, bairro, canal de tráfego, página ou ação efetuada..."
+              placeholder="Buscar visitante por nome do lead, telefone, cidade, bairro, canal ou ação..."
               value={sessionSearch}
               onChange={(e) => setSessionSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#FAF6F0] border border-[#E5DAD0] rounded-xl text-[#1F1916] placeholder-[#8C7359] focus:outline-hidden focus:border-[#44342E]"
@@ -895,7 +916,9 @@ export const InternalAnalyticsDashboard: React.FC = () => {
                   <div 
                     key={session.sessionId || sIdx}
                     className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                      session.isHotLead 
+                      session.isLead
+                        ? 'bg-linear-to-r from-emerald-50/50 via-white to-emerald-50/20 border-emerald-300 shadow-xs ring-1 ring-emerald-200'
+                        : session.isHotLead 
                         ? 'bg-linear-to-r from-amber-50/40 via-white to-amber-50/20 border-amber-300 shadow-xs' 
                         : 'bg-[#FAF6F0]/60 border-[#E5DAD0] hover:border-[#8C7359]/60'
                     }`}
@@ -903,29 +926,80 @@ export const InternalAnalyticsDashboard: React.FC = () => {
                     {/* Header Row */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          session.isHotLead ? 'bg-amber-500 text-white shadow-xs' : 'bg-[#EFE6DC] text-[#44342E]'
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          session.isLead 
+                            ? 'bg-emerald-600 text-white shadow-xs' 
+                            : session.isHotLead 
+                            ? 'bg-amber-500 text-white shadow-xs' 
+                            : 'bg-[#EFE6DC] text-[#44342E]'
                         }`}>
-                          {session.isHotLead ? <Flame className="w-5 h-5 fill-current animate-pulse" /> : <Users className="w-4 h-4" />}
+                          {session.isLead ? <CheckCircle2 className="w-5 h-5" /> : session.isHotLead ? <Flame className="w-5 h-5 fill-current animate-pulse" /> : <Users className="w-4 h-4" />}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs font-bold text-[#1F1916]">
-                              Visitante #{session.visitorId?.slice(-6) || String(sIdx + 1)}
-                            </span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-[#E5DAD0] text-[#5C4B44]">
-                              {session.trafficChannel}
-                            </span>
-                            {session.city && session.city !== 'Não informada' && (
-                              <span className="inline-flex items-center gap-1 text-[10px] text-[#8C7359] bg-white px-2 py-0.5 rounded-md border border-[#E5DAD0]">
-                                <MapPin className="w-2.5 h-2.5" />
-                                {session.neighborhood && session.neighborhood !== 'Não informada' ? `${session.neighborhood}, ` : ''}{session.city}
+                          {session.leadName ? (
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-serif text-sm sm:text-base font-bold text-[#1F1916]">
+                                  {session.leadName}
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  Lead Cadastrado ({session.leadStatus === 'agendado' ? 'Agendado' : session.leadStatus === 'convertido' ? 'Convertido' : session.leadStatus === 'em_contato' ? 'Em Contato' : 'Novo'})
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-[#E5DAD0] text-[#5C4B44]">
+                                  {session.trafficChannel}
+                                </span>
+                                {session.city && session.city !== 'Não informada' && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-[#8C7359] bg-white px-2 py-0.5 rounded-md border border-[#E5DAD0]">
+                                    <MapPin className="w-2.5 h-2.5" />
+                                    {session.neighborhood && session.neighborhood !== 'Não informada' ? `${session.neighborhood}, ` : ''}{session.city}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2.5 flex-wrap pt-0.5">
+                                {session.leadPhone && (
+                                  <a
+                                    href={`https://wa.me/55${session.leadPhone.replace(/\D/g, '')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200"
+                                    title="Conversar no WhatsApp"
+                                  >
+                                    <Phone className="w-3 h-3 text-emerald-600" />
+                                    <span>{session.leadPhone}</span>
+                                  </a>
+                                )}
+                                {session.leadServiceInterest && (
+                                  <span className="text-[10px] font-medium text-[#66534B] bg-[#FAF6F0] px-2 py-0.5 rounded-md border border-[#E5DAD0]">
+                                    Interesse: {session.leadServiceInterest}
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-[#8C7359] font-mono">
+                                  Visitante: #{session.visitorId?.slice(-6)} • Sessão: {session.sessionId?.slice(-8)} • {new Date(session.lastSeen).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-[#1F1916]">
+                                  Visitante #{session.visitorId?.slice(-6) || String(sIdx + 1)}
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-[#E5DAD0] text-[#5C4B44]">
+                                  {session.trafficChannel}
+                                </span>
+                                {session.city && session.city !== 'Não informada' && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-[#8C7359] bg-white px-2 py-0.5 rounded-md border border-[#E5DAD0]">
+                                    <MapPin className="w-2.5 h-2.5" />
+                                    {session.neighborhood && session.neighborhood !== 'Não informada' ? `${session.neighborhood}, ` : ''}{session.city}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-[#8C7359] block mt-0.5 font-mono">
+                                Sessão: {session.sessionId?.slice(-8)} • {new Date(session.lastSeen).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                               </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-[#8C7359] block mt-0.5 font-mono">
-                            Sessão: {session.sessionId?.slice(-8)} • {new Date(session.lastSeen).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

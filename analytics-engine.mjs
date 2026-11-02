@@ -139,7 +139,8 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
   if (leadsPool) {
     try {
       const [rows] = await leadsPool.query(`
-        SELECT status, service_interest, traffic_channel FROM nido_leads WHERE deleted_at IS NULL
+        SELECT id, name, phone, email, status, service_interest, traffic_channel, city, neighborhood, state, latitude, longitude, attribution_context, location_context, session_journey, created_at
+        FROM nido_leads WHERE deleted_at IS NULL
       `);
       leadRows = rows || [];
       totalLeads = leadRows.length;
@@ -401,6 +402,33 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
   // 10. Visitor Sessions & User Journeys (detailed user navigation, time spent, clicks, hot leads)
   let visitorSessions = [];
   try {
+    // Build lead lookup maps from leadRows with cross-referencing by phone, email, visitorId, sessionId
+    const leadByVisitorId = new Map();
+    const leadBySessionId = new Map();
+    const leadByPhone = new Map();
+    const leadByEmail = new Map();
+    const leadSessionIds = new Set();
+
+    for (const lead of leadRows) {
+      const attr = parseContext(lead.attribution_context);
+      if (attr?.visitorId && attr.visitorId !== 'v_anon' && !leadByVisitorId.has(attr.visitorId)) {
+        leadByVisitorId.set(attr.visitorId, lead);
+      }
+      if (attr?.sessionId && attr.sessionId !== 's_anon') {
+        if (!leadBySessionId.has(attr.sessionId)) {
+          leadBySessionId.set(attr.sessionId, lead);
+        }
+        leadSessionIds.add(attr.sessionId);
+      }
+      if (lead.phone) {
+        const cleanP = String(lead.phone).replace(/\D/g, '');
+        if (cleanP.length >= 8) leadByPhone.set(cleanP, lead);
+      }
+      if (lead.email && !lead.email.includes('@nido.local')) {
+        leadByEmail.set(String(lead.email).trim().toLowerCase(), lead);
+      }
+    }
+
     const [sessionRows] = await pool.query(`
       SELECT 
         session_id AS sessionId,
@@ -418,103 +446,235 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
       WHERE is_preview = FALSE
       GROUP BY session_id, visitor_id
       ORDER BY MAX(created_at) DESC
-      LIMIT 40
+      LIMIT 100
     `);
 
-    if (Array.isArray(sessionRows) && sessionRows.length > 0) {
-      const sessionIds = sessionRows.map(s => s.sessionId).filter(Boolean);
-      let detailEvents = [];
-      if (sessionIds.length > 0) {
-        try {
-          const [dEvents] = await pool.query(`
-            SELECT 
-              session_id AS sessionId,
-              event_type AS type,
-              COALESCE(event_label, event_name, page_path) AS label,
-              page_path AS pagePath,
-              duration_seconds AS durationSeconds,
-              created_at AS createdAt
-            FROM nido_analytics_events
-            WHERE session_id IN (?) AND is_preview = FALSE
-            ORDER BY created_at ASC
-          `, [sessionIds]);
-          detailEvents = dEvents || [];
-        } catch {
-          detailEvents = [];
-        }
+    // Ensure sessions of known leads are included even if older
+    const foundSessionIds = new Set((sessionRows || []).map(s => s.sessionId));
+    const missingLeadSessionIds = [...leadSessionIds].filter(sid => !foundSessionIds.has(sid));
+
+    let extraSessionRows = [];
+    if (missingLeadSessionIds.length > 0) {
+      try {
+        const [extraRows] = await pool.query(`
+          SELECT 
+            session_id AS sessionId,
+            visitor_id AS visitorId,
+            MAX(city) AS city,
+            MAX(neighborhood) AS neighborhood,
+            MAX(state) AS state,
+            MAX(traffic_channel) AS trafficChannel,
+            MAX(traffic_source) AS trafficSource,
+            SUM(CASE WHEN event_type = 'page_view' THEN duration_seconds ELSE 0 END) AS totalDurationSeconds,
+            SUM(CASE WHEN event_type = 'page_view' THEN 1 ELSE 0 END) AS totalPageViews,
+            COUNT(*) AS totalEvents,
+            MAX(created_at) AS lastSeen
+          FROM nido_analytics_events
+          WHERE session_id IN (?) AND is_preview = FALSE
+          GROUP BY session_id, visitor_id
+        `, [missingLeadSessionIds]);
+        extraSessionRows = extraRows || [];
+      } catch {
+        extraSessionRows = [];
       }
-
-      const eventsBySession = new Map();
-      for (const ev of detailEvents) {
-        if (!eventsBySession.has(ev.sessionId)) eventsBySession.set(ev.sessionId, []);
-        eventsBySession.get(ev.sessionId).push(ev);
-      }
-
-      visitorSessions = sessionRows.map(s => {
-        const sEvents = eventsBySession.get(s.sessionId) || [];
-        const steps = [];
-        const actions = [];
-        let hotScore = 0;
-        let hasDirections = false;
-        let hasWhatsApp = false;
-        let treatmentsCount = 0;
-
-        for (const ev of sEvents) {
-          if (ev.type === 'page_view') {
-            steps.push({
-              path: ev.pagePath,
-              title: ev.label || ev.pagePath,
-              durationSeconds: Number(ev.durationSeconds || 0),
-              time: ev.createdAt ? new Date(ev.createdAt).toISOString() : undefined
-            });
-          } else {
-            actions.push({
-              type: ev.type,
-              label: ev.label,
-              path: ev.pagePath,
-              time: ev.createdAt ? new Date(ev.createdAt).toISOString() : undefined
-            });
-            const lowerLabel = String(ev.label || '').toLowerCase();
-            if (lowerLabel.includes('maps') || lowerLabel.includes('waze') || lowerLabel.includes('uber')) {
-              hasDirections = true;
-            }
-            if (lowerLabel.includes('whatsapp') || lowerLabel.includes('wa.me') || lowerLabel.includes('contato')) {
-              hasWhatsApp = true;
-            }
-          }
-          if (ev.type === 'treatment_view') {
-            treatmentsCount++;
-          }
-        }
-
-        if (hasDirections) hotScore += 35;
-        if (hasWhatsApp) hotScore += 30;
-        hotScore += Math.min(treatmentsCount * 15, 30);
-        const durationSecs = Number(s.totalDurationSeconds || 0);
-        if (durationSecs >= 120) hotScore += 15;
-        else if (durationSecs >= 45) hotScore += 10;
-        const pagesCount = Number(s.totalPageViews || 0);
-        if (pagesCount >= 3) hotScore += 10;
-
-        return {
-          sessionId: s.sessionId,
-          visitorId: s.visitorId,
-          city: s.city || 'Não informada',
-          neighborhood: s.neighborhood || 'Não informada',
-          state: s.state || 'Não informada',
-          trafficChannel: s.trafficChannel || 'Direto',
-          trafficSource: s.trafficSource || 'direto',
-          totalDurationSeconds: durationSecs,
-          totalPageViews: pagesCount,
-          steps,
-          actions,
-          hotScore,
-          isHotLead: hotScore >= 50,
-          lastSeen: s.lastSeen ? new Date(s.lastSeen).toISOString() : new Date().toISOString()
-        };
-      });
     }
-  } catch {
+
+    const allSessionRows = [...(sessionRows || []), ...extraSessionRows];
+
+    const sessionIds = allSessionRows.map(s => s.sessionId).filter(Boolean);
+    let detailEvents = [];
+    if (sessionIds.length > 0) {
+      try {
+        const [dEvents] = await pool.query(`
+          SELECT 
+            session_id AS sessionId,
+            event_type AS type,
+            COALESCE(event_label, event_name, page_path) AS label,
+            page_path AS pagePath,
+            duration_seconds AS durationSeconds,
+            created_at AS createdAt
+          FROM nido_analytics_events
+          WHERE session_id IN (?) AND is_preview = FALSE
+          ORDER BY created_at ASC
+        `, [sessionIds]);
+        detailEvents = dEvents || [];
+      } catch {
+        detailEvents = [];
+      }
+    }
+
+    const eventsBySession = new Map();
+    for (const ev of detailEvents) {
+      if (!eventsBySession.has(ev.sessionId)) eventsBySession.set(ev.sessionId, []);
+      eventsBySession.get(ev.sessionId).push(ev);
+    }
+
+    visitorSessions = allSessionRows.map(s => {
+      const sEvents = eventsBySession.get(s.sessionId) || [];
+      const steps = [];
+      const actions = [];
+      let hotScore = 0;
+      let hasDirections = false;
+      let hasWhatsApp = false;
+      let treatmentsCount = 0;
+
+      for (const ev of sEvents) {
+        if (ev.type === 'page_view') {
+          steps.push({
+            path: ev.pagePath,
+            title: ev.label || ev.pagePath,
+            durationSeconds: Number(ev.durationSeconds || 0),
+            time: ev.createdAt ? new Date(ev.createdAt).toISOString() : undefined
+          });
+        } else {
+          actions.push({
+            type: ev.type,
+            label: ev.label,
+            path: ev.pagePath,
+            time: ev.createdAt ? new Date(ev.createdAt).toISOString() : undefined
+          });
+          const lowerLabel = String(ev.label || '').toLowerCase();
+          if (lowerLabel.includes('maps') || lowerLabel.includes('waze') || lowerLabel.includes('uber')) {
+            hasDirections = true;
+          }
+          if (lowerLabel.includes('whatsapp') || lowerLabel.includes('wa.me') || lowerLabel.includes('contato')) {
+            hasWhatsApp = true;
+          }
+        }
+        if (ev.type === 'treatment_view') {
+          treatmentsCount++;
+        }
+      }
+
+      // Cross-reference with lead in CRM by visitorId, sessionId, phone, or email
+      let matchedLead = leadByVisitorId.get(s.visitorId) || leadBySessionId.get(s.sessionId);
+      if (!matchedLead) {
+        for (const lead of leadRows) {
+          if (lead.phone) {
+            const cp = String(lead.phone).replace(/\D/g, '');
+            if (cp.length >= 8 && sEvents.some(e => String(e.label || '').includes(cp))) {
+              matchedLead = lead;
+              break;
+            }
+          }
+          if (lead.email && !lead.email.includes('@nido.local')) {
+            if (sEvents.some(e => String(e.label || '').toLowerCase().includes(lead.email.toLowerCase()))) {
+              matchedLead = lead;
+              break;
+            }
+          }
+        }
+      }
+
+      if (matchedLead) {
+        hotScore += 50; // Lead confirmed in CRM
+      }
+      if (hasDirections) hotScore += 35;
+      if (hasWhatsApp) hotScore += 30;
+      hotScore += Math.min(treatmentsCount * 15, 30);
+      const durationSecs = Number(s.totalDurationSeconds || 0);
+      if (durationSecs >= 120) hotScore += 15;
+      else if (durationSecs >= 45) hotScore += 10;
+      const pagesCount = Number(s.totalPageViews || 0);
+      if (pagesCount >= 3) hotScore += 10;
+
+      // Resolve location with fallback to matched lead's location or GPS coordinates
+      let city = s.city;
+      let neighborhood = s.neighborhood;
+      let state = s.state;
+      let latitude = s.latitude;
+      let longitude = s.longitude;
+
+      if (matchedLead) {
+        const leadLoc = parseContext(matchedLead.location_context);
+        if ((!city || city === 'Não informada') && matchedLead.city && matchedLead.city !== 'Não informada') city = matchedLead.city;
+        else if ((!city || city === 'Não informada') && leadLoc.city && leadLoc.city !== 'Não informada') city = leadLoc.city;
+
+        if ((!neighborhood || neighborhood === 'Não informada') && matchedLead.neighborhood && matchedLead.neighborhood !== 'Não informada') neighborhood = matchedLead.neighborhood;
+        else if ((!neighborhood || neighborhood === 'Não informada') && leadLoc.neighborhood && leadLoc.neighborhood !== 'Não informada') neighborhood = leadLoc.neighborhood;
+
+        if ((!state || state === 'Não informada') && matchedLead.state && matchedLead.state !== 'Não informada') state = matchedLead.state;
+        else if ((!state || state === 'Não informada') && leadLoc.state && leadLoc.state !== 'Não informada') state = leadLoc.state;
+
+        if (!latitude && matchedLead.latitude) latitude = Number(matchedLead.latitude);
+        if (!longitude && matchedLead.longitude) longitude = Number(matchedLead.longitude);
+      }
+
+      if ((!city || city === 'Não informada') && latitude && longitude) {
+        city = `Lat/Lon (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`;
+      }
+      if ((!neighborhood || neighborhood === 'Não informada') && latitude && longitude) {
+        neighborhood = 'GPS Autorizado';
+      }
+
+      return {
+        sessionId: s.sessionId,
+        visitorId: s.visitorId,
+        city: city || 'Não informada',
+        neighborhood: neighborhood || 'Não informada',
+        state: state || 'Não informada',
+        trafficChannel: matchedLead?.traffic_channel || s.trafficChannel || 'Direto',
+        trafficSource: s.trafficSource || 'direto',
+        totalDurationSeconds: durationSecs,
+        totalPageViews: pagesCount,
+        steps,
+        actions,
+        hotScore,
+        isHotLead: Boolean(matchedLead) || hotScore >= 50,
+        isLead: Boolean(matchedLead),
+        leadId: matchedLead?.id,
+        leadName: matchedLead?.name,
+        leadPhone: matchedLead?.phone,
+        leadEmail: matchedLead?.email,
+        leadStatus: matchedLead?.status,
+        leadServiceInterest: matchedLead?.service_interest,
+        lastSeen: s.lastSeen ? new Date(s.lastSeen).toISOString() : new Date().toISOString()
+      };
+    });
+
+    // Also include any leads not covered by session rows so every lead appears in visitor sessions
+    const coveredLeadIds = new Set(visitorSessions.filter(s => s.leadId).map(s => s.leadId));
+    for (const lead of leadRows) {
+      if (!coveredLeadIds.has(lead.id)) {
+        const leadLoc = parseContext(lead.location_context);
+        const lCity = (lead.city && lead.city !== 'Não informada') ? lead.city : (leadLoc.city && leadLoc.city !== 'Não informada' ? leadLoc.city : (lead.latitude && lead.longitude ? `Lat/Lon (${Number(lead.latitude).toFixed(3)}, ${Number(lead.longitude).toFixed(3)})` : 'Não informada'));
+        const lNeigh = (lead.neighborhood && lead.neighborhood !== 'Não informada') ? lead.neighborhood : (leadLoc.neighborhood && leadLoc.neighborhood !== 'Não informada' ? leadLoc.neighborhood : (lead.latitude && lead.longitude ? 'GPS Autorizado' : 'Não informada'));
+        const lState = (lead.state && lead.state !== 'Não informada') ? lead.state : (leadLoc.state && leadLoc.state !== 'Não informada' ? leadLoc.state : 'SP');
+
+        visitorSessions.push({
+          sessionId: `lead_sess_${lead.id}`,
+          visitorId: lead.id,
+          city: lCity,
+          neighborhood: lNeigh,
+          state: lState,
+          trafficChannel: lead.traffic_channel || 'Direto',
+          trafficSource: lead.traffic_source || 'direto',
+          totalDurationSeconds: 45,
+          totalPageViews: 1,
+          steps: [{ path: lead.page_path || '/', title: lead.serviceInterest || 'Formulário de Contato', durationSeconds: 45 }],
+          actions: [{ type: 'lead_submit', label: `Lead: ${lead.name} (${lead.serviceInterest || 'Geral'})`, path: lead.page_path || '/' }],
+          hotScore: 60,
+          isHotLead: true,
+          isLead: true,
+          leadId: lead.id,
+          leadName: lead.name,
+          leadPhone: lead.phone,
+          leadEmail: lead.email,
+          leadStatus: lead.status,
+          leadServiceInterest: lead.service_interest,
+          lastSeen: lead.created_at ? new Date(lead.created_at).toISOString() : new Date().toISOString()
+        });
+      }
+    }
+
+    // Sort with converted leads first, then by last seen
+    visitorSessions.sort((a, b) => {
+      if (a.isLead && !b.isLead) return -1;
+      if (!a.isLead && b.isLead) return 1;
+      return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+    });
+  } catch (sessErr) {
+    console.warn('[Visitor Sessions Analytics Error]', sessErr);
     visitorSessions = [];
   }
 
