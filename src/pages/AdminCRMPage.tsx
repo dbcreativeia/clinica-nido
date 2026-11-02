@@ -24,7 +24,8 @@ import {
   BarChart3,
   Navigation,
   Upload,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Flame
 } from 'lucide-react';
 import { SEOHead } from '../components/SEOHead';
 import { InternalAnalyticsDashboard } from '../components/admin/InternalAnalyticsDashboard';
@@ -87,6 +88,59 @@ export interface StoredLead {
   }>;
   createdAt: string;
   updatedAt: string;
+}
+
+export function calculateLeadHotScore(lead: StoredLead): { score: number; isHot: boolean; reasons: string[] } {
+  let score = 0;
+  const reasons: string[] = [];
+
+  // 1. Clicou em rota física (Maps, Waze, Uber) ou CTA de localização
+  const cta = (lead.ctaLocation || '').toLowerCase();
+  const notes = (lead.notes || '').toLowerCase();
+  const hasRouteIntent = cta.includes('waze') || cta.includes('maps') || cta.includes('uber') || cta.includes('como chegar') || notes.includes('waze') || notes.includes('maps') || notes.includes('uber');
+  if (hasRouteIntent) {
+    score += 35;
+    reasons.push('Traçou rota para a clínica (+35 pts)');
+  }
+
+  // 2. Status de alta qualificação
+  if (['agendado', 'compareceu', 'convertido'].includes(lead.status)) {
+    score += 30;
+    reasons.push('Avaliação agendada ou compareceu (+30 pts)');
+  } else if (lead.status === 'em_contato') {
+    score += 15;
+    reasons.push('Em atendimento / negociação (+15 pts)');
+  }
+
+  // 3. Tratamentos explorados no site
+  const treatmentsCount = lead.viewedTreatments?.length || 0;
+  if (treatmentsCount >= 2) {
+    score += 25;
+    reasons.push(`Navegou em ${treatmentsCount} tratamentos (+25 pts)`);
+  } else if (treatmentsCount === 1) {
+    score += 15;
+    reasons.push(`Visualizou tratamento específico (+15 pts)`);
+  }
+
+  // 4. Tempo de permanência na sessão
+  const duration = lead.sessionJourney?.totalDurationSeconds || 0;
+  if (duration >= 120) {
+    score += 15;
+    reasons.push(`Tempo ativo no site > 2 min (+15 pts)`);
+  } else if (duration >= 45) {
+    score += 10;
+    reasons.push(`Tempo ativo no site > 45s (+10 pts)`);
+  }
+
+  // 5. Origem de tráfego de alta intenção
+  const channel = (lead.trafficChannel || '').toLowerCase();
+  if (channel.includes('google ads') || channel.includes('meta ads')) {
+    score += 10;
+    reasons.push('Veio de campanha patrocinada (+10 pts)');
+  }
+
+  const isHot = score >= 50;
+  return { score, isHot, reasons };
 }
 
 export const AdminCRMPage: React.FC = () => {
@@ -429,16 +483,20 @@ export const AdminCRMPage: React.FC = () => {
         l.phone?.includes(searchTerm) ||
         l.serviceInterest?.toLowerCase().includes(searchTerm.toLowerCase());
 
+      const matchesStatus =
+        statusFilter === 'todos' ||
+        l.status?.toLowerCase() === statusFilter.toLowerCase();
+
+      if (channelFilter === 'hot') {
+        return matchesSearch && matchesStatus && calculateLeadHotScore(l).isHot;
+      }
+
       const matchesChannel =
         channelFilter === 'todos' ||
         l.trafficChannel?.toLowerCase() === channelFilter.toLowerCase() ||
         (channelFilter === 'Instagram' && l.trafficChannel?.toLowerCase().includes('instagram')) ||
         (channelFilter === 'Facebook' && l.trafficChannel?.toLowerCase().includes('facebook')) ||
         (channelFilter === 'ChatGPT / IA' && (l.trafficChannel === 'ChatGPT / IA' || l.trafficChannel?.toLowerCase().includes('chatgpt')));
-
-      const matchesStatus =
-        statusFilter === 'todos' ||
-        l.status?.toLowerCase() === statusFilter.toLowerCase();
 
       return matchesSearch && matchesChannel && matchesStatus;
     });
@@ -451,6 +509,7 @@ export const AdminCRMPage: React.FC = () => {
     const leadsToday = leads.filter(
       (l) => new Date(l.createdAt).toDateString() === today
     ).length;
+    const hotLeadsCount = leads.filter((l) => calculateLeadHotScore(l).isHot).length;
     const googleAdsLeads = leads.filter((l) => l.trafficChannel === 'Google Ads').length;
     const googleOrganicLeads = leads.filter((l) => l.trafficChannel === 'Google Orgânico').length;
     const metaAdsLeads = leads.filter((l) => l.trafficChannel === 'Meta Ads').length;
@@ -463,6 +522,7 @@ export const AdminCRMPage: React.FC = () => {
     return { 
       total, 
       leadsToday, 
+      hotLeadsCount,
       googleAdsLeads, 
       googleOrganicLeads, 
       metaAdsLeads, 
@@ -937,6 +997,18 @@ export const AdminCRMPage: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setChannelFilter(channelFilter === 'hot' ? 'todos' : 'hot')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                channelFilter === 'hot'
+                  ? 'bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-xs'
+                  : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5 fill-current" />
+              <span>🔥 Hot Leads ({stats.hotLeadsCount})</span>
+            </button>
+
+            <button
               onClick={() => setChannelFilter('Google Ads')}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 channelFilter === 'Google Ads'
@@ -1125,7 +1197,22 @@ export const AdminCRMPage: React.FC = () => {
 
                         {/* Nome & Email */}
                         <td className="py-4 px-4 sm:px-6">
-                          <div className="font-bold text-[#1F1916]">{lead.name}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-[#1F1916]">{lead.name}</span>
+                            {(() => {
+                              const hot = calculateLeadHotScore(lead);
+                              if (!hot.isHot) return null;
+                              return (
+                                <span 
+                                  className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-xs"
+                                  title={`Score de Alto Potencial: ${hot.score} pts`}
+                                >
+                                  <Flame className="w-2.5 h-2.5 fill-current" />
+                                  <span>Hot Lead</span>
+                                </span>
+                              );
+                            })()}
+                          </div>
                           <a
                             href={`mailto:${lead.email}`}
                             className="inline-flex items-center gap-1 text-[11px] text-[#66534B] hover:text-[#44342E] transition-colors mt-0.5"
@@ -1255,6 +1342,51 @@ export const AdminCRMPage: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* Hot Lead Score & Intent Card */}
+            {(() => {
+              const hot = calculateLeadHotScore(selectedLead);
+              return (
+                <div className={`p-4 rounded-2xl border ${
+                  hot.isHot 
+                    ? 'bg-linear-to-r from-amber-50 to-orange-50/40 border-amber-300 shadow-xs' 
+                    : 'bg-[#FAF6F0] border-[#E5DAD0]'
+                } space-y-2.5`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#1F1916] flex items-center gap-1.5">
+                      <Flame className={`w-4 h-4 ${hot.isHot ? 'text-amber-600 fill-current' : 'text-[#8C7359]'}`} />
+                      Score de Engajamento & Ações de Valor no Site:
+                    </span>
+                    <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
+                      hot.isHot 
+                        ? 'bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-xs' 
+                        : 'bg-white text-[#44342E] border border-[#E5DAD0]'
+                    }`}>
+                      {hot.isHot ? `🔥 Hot Lead (${hot.score} pts)` : `Score: ${hot.score} pts`}
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-[#E5DAD0]/80 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        hot.isHot ? 'bg-linear-to-r from-amber-500 to-orange-600' : 'bg-[#8C7359]'
+                      }`}
+                      style={{ width: `${Math.min(100, hot.score)}%` }}
+                    />
+                  </div>
+
+                  {hot.reasons.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {hot.reasons.map((r, rIdx) => (
+                        <span key={rIdx} className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-amber-200 text-amber-950">
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Meta Ads CAPI Status Card */}
             {selectedLead.metaLeadSent ? (

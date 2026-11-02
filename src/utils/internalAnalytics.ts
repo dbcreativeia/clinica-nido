@@ -581,7 +581,7 @@ function setupGlobalListeners() {
         if (href.startsWith('http') || href.startsWith('//')) {
           const lowerHref = href.toLowerCase();
           if (lowerHref.includes('wa.me') || lowerHref.includes('whatsapp') || locationApp) {
-            trackCTAClick(rawLabel || (locationApp ? `Rota ${locationApp}` : 'Contato Externo'), href);
+            trackCTAClick(locationApp ? `Rota ${locationApp}` : (rawLabel || 'Contato Externo'), href);
           } else {
             trackRouteClick(href, rawLabel || href);
           }

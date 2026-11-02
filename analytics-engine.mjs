@@ -319,7 +319,7 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
     LIMIT 25
   `);
 
-  const recentLiveEvents = liveRows.map(lr => ({
+  const recentLiveEvents = (liveRows || []).map(lr => ({
     type: lr.type,
     label: lr.label || 'Ação no site',
     pagePath: lr.pagePath || '/',
@@ -327,6 +327,196 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
     neighborhood: lr.neighborhood || 'Não informada',
     timestamp: lr.timestamp ? new Date(lr.timestamp).toISOString() : new Date().toISOString()
   }));
+
+  // 9. Directions / Como Chegar Stats (Google Maps, Waze, Uber)
+  let directionRows = [];
+  try {
+    const [dRows] = await pool.query(`
+      SELECT 
+        CASE 
+          WHEN LOWER(COALESCE(event_label, event_name, '')) LIKE '%waze%' THEN 'Waze'
+          WHEN LOWER(COALESCE(event_label, event_name, '')) LIKE '%uber%' THEN 'Uber'
+          WHEN LOWER(COALESCE(event_label, event_name, '')) LIKE '%maps%' THEN 'Google Maps'
+          ELSE 'Outro'
+        END AS app,
+        page_path AS pagePath,
+        COUNT(*) AS clicks,
+        COUNT(DISTINCT visitor_id) AS visitors
+      FROM nido_analytics_events
+      WHERE is_preview = FALSE AND (
+        LOWER(COALESCE(event_label, event_name, '')) LIKE '%waze%' OR
+        LOWER(COALESCE(event_label, event_name, '')) LIKE '%uber%' OR
+        LOWER(COALESCE(event_label, event_name, '')) LIKE '%maps%'
+      )
+      GROUP BY app, page_path
+      ORDER BY clicks DESC
+    `);
+    directionRows = dRows || [];
+  } catch {
+    directionRows = [];
+  }
+
+  const validDirectionRows = (directionRows || []).filter(r => ['Google Maps', 'Waze', 'Uber'].includes(r.app));
+  const appAggregates = {
+    'Google Maps': { clicks: 0, visitors: 0, byPage: [] },
+    'Waze': { clicks: 0, visitors: 0, byPage: [] },
+    'Uber': { clicks: 0, visitors: 0, byPage: [] }
+  };
+  for (const r of validDirectionRows) {
+    if (appAggregates[r.app]) {
+      appAggregates[r.app].clicks += Number(r.clicks || 0);
+      appAggregates[r.app].visitors += Number(r.visitors || 0);
+      appAggregates[r.app].byPage.push({ page: r.pagePath, clicks: Number(r.clicks || 0) });
+    }
+  }
+  const totalDirectionsClicks = (
+    appAggregates['Google Maps'].clicks + 
+    appAggregates['Waze'].clicks + 
+    appAggregates['Uber'].clicks
+  );
+  const directions = {
+    totalClicks: totalDirectionsClicks,
+    apps: [
+      {
+        app: 'Google Maps',
+        clicks: appAggregates['Google Maps'].clicks,
+        uniqueVisitors: appAggregates['Google Maps'].visitors,
+        percentage: totalDirectionsClicks > 0 ? Math.round((appAggregates['Google Maps'].clicks / totalDirectionsClicks) * 1000) / 10 : 0
+      },
+      {
+        app: 'Waze',
+        clicks: appAggregates['Waze'].clicks,
+        uniqueVisitors: appAggregates['Waze'].visitors,
+        percentage: totalDirectionsClicks > 0 ? Math.round((appAggregates['Waze'].clicks / totalDirectionsClicks) * 1000) / 10 : 0
+      },
+      {
+        app: 'Uber',
+        clicks: appAggregates['Uber'].clicks,
+        uniqueVisitors: appAggregates['Uber'].visitors,
+        percentage: totalDirectionsClicks > 0 ? Math.round((appAggregates['Uber'].clicks / totalDirectionsClicks) * 1000) / 10 : 0
+      }
+    ]
+  };
+
+  // 10. Visitor Sessions & User Journeys (detailed user navigation, time spent, clicks, hot leads)
+  let visitorSessions = [];
+  try {
+    const [sessionRows] = await pool.query(`
+      SELECT 
+        session_id AS sessionId,
+        visitor_id AS visitorId,
+        MAX(city) AS city,
+        MAX(neighborhood) AS neighborhood,
+        MAX(state) AS state,
+        MAX(traffic_channel) AS trafficChannel,
+        MAX(traffic_source) AS trafficSource,
+        SUM(CASE WHEN event_type = 'page_view' THEN duration_seconds ELSE 0 END) AS totalDurationSeconds,
+        SUM(CASE WHEN event_type = 'page_view' THEN 1 ELSE 0 END) AS totalPageViews,
+        COUNT(*) AS totalEvents,
+        MAX(created_at) AS lastSeen
+      FROM nido_analytics_events
+      WHERE is_preview = FALSE
+      GROUP BY session_id, visitor_id
+      ORDER BY MAX(created_at) DESC
+      LIMIT 40
+    `);
+
+    if (Array.isArray(sessionRows) && sessionRows.length > 0) {
+      const sessionIds = sessionRows.map(s => s.sessionId).filter(Boolean);
+      let detailEvents = [];
+      if (sessionIds.length > 0) {
+        try {
+          const [dEvents] = await pool.query(`
+            SELECT 
+              session_id AS sessionId,
+              event_type AS type,
+              COALESCE(event_label, event_name, page_path) AS label,
+              page_path AS pagePath,
+              duration_seconds AS durationSeconds,
+              created_at AS createdAt
+            FROM nido_analytics_events
+            WHERE session_id IN (?) AND is_preview = FALSE
+            ORDER BY created_at ASC
+          `, [sessionIds]);
+          detailEvents = dEvents || [];
+        } catch {
+          detailEvents = [];
+        }
+      }
+
+      const eventsBySession = new Map();
+      for (const ev of detailEvents) {
+        if (!eventsBySession.has(ev.sessionId)) eventsBySession.set(ev.sessionId, []);
+        eventsBySession.get(ev.sessionId).push(ev);
+      }
+
+      visitorSessions = sessionRows.map(s => {
+        const sEvents = eventsBySession.get(s.sessionId) || [];
+        const steps = [];
+        const actions = [];
+        let hotScore = 0;
+        let hasDirections = false;
+        let hasWhatsApp = false;
+        let treatmentsCount = 0;
+
+        for (const ev of sEvents) {
+          if (ev.type === 'page_view') {
+            steps.push({
+              path: ev.pagePath,
+              title: ev.label || ev.pagePath,
+              durationSeconds: Number(ev.durationSeconds || 0),
+              time: ev.createdAt ? new Date(ev.createdAt).toISOString() : undefined
+            });
+          } else {
+            actions.push({
+              type: ev.type,
+              label: ev.label,
+              path: ev.pagePath,
+              time: ev.createdAt ? new Date(ev.createdAt).toISOString() : undefined
+            });
+            const lowerLabel = String(ev.label || '').toLowerCase();
+            if (lowerLabel.includes('maps') || lowerLabel.includes('waze') || lowerLabel.includes('uber')) {
+              hasDirections = true;
+            }
+            if (lowerLabel.includes('whatsapp') || lowerLabel.includes('wa.me') || lowerLabel.includes('contato')) {
+              hasWhatsApp = true;
+            }
+          }
+          if (ev.type === 'treatment_view') {
+            treatmentsCount++;
+          }
+        }
+
+        if (hasDirections) hotScore += 35;
+        if (hasWhatsApp) hotScore += 30;
+        hotScore += Math.min(treatmentsCount * 15, 30);
+        const durationSecs = Number(s.totalDurationSeconds || 0);
+        if (durationSecs >= 120) hotScore += 15;
+        else if (durationSecs >= 45) hotScore += 10;
+        const pagesCount = Number(s.totalPageViews || 0);
+        if (pagesCount >= 3) hotScore += 10;
+
+        return {
+          sessionId: s.sessionId,
+          visitorId: s.visitorId,
+          city: s.city || 'Não informada',
+          neighborhood: s.neighborhood || 'Não informada',
+          state: s.state || 'Não informada',
+          trafficChannel: s.trafficChannel || 'Direto',
+          trafficSource: s.trafficSource || 'direto',
+          totalDurationSeconds: durationSecs,
+          totalPageViews: pagesCount,
+          steps,
+          actions,
+          hotScore,
+          isHotLead: hotScore >= 50,
+          lastSeen: s.lastSeen ? new Date(s.lastSeen).toISOString() : new Date().toISOString()
+        };
+      });
+    }
+  } catch {
+    visitorSessions = [];
+  }
 
   return {
     summary: {
@@ -346,6 +536,8 @@ export async function getAnalyticsStats(pool, leadsPool = pool) {
     ctaClicks,
     topLocations,
     trafficSources,
-    recentLiveEvents
+    recentLiveEvents,
+    directions,
+    visitorSessions
   };
 }

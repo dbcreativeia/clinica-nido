@@ -147,7 +147,7 @@ function createMockPool() {
         return [rows];
       }
 
-      if (normalizedSql.includes('SELECT event_type AS type')) {
+      if (normalizedSql.includes('ORDER BY created_at DESC LIMIT 25')) {
         const recent = [...events.values()]
           .filter(e => !e.is_preview)
           .slice(-25)
@@ -160,6 +160,53 @@ function createMockPool() {
             timestamp: e.created_at
           }));
         return [recent];
+      }
+
+      if (normalizedSql.includes('CASE WHEN LOWER(COALESCE(event_label, event_name')) {
+        const rows = [];
+        for (const e of events.values()) {
+          const text = (String(e.event_label || '') + ' ' + String(e.event_name || '')).toLowerCase();
+          let app = null;
+          if (text.includes('waze')) app = 'Waze';
+          else if (text.includes('uber')) app = 'Uber';
+          else if (text.includes('maps')) app = 'Google Maps';
+          if (app && !e.is_preview) {
+            rows.push({ app, pagePath: e.page_path, clicks: 1, visitors: 1 });
+          }
+        }
+        return [rows];
+      }
+
+      if (normalizedSql.includes('totalDurationSeconds')) {
+        const sessionMap = new Map();
+        for (const e of events.values()) {
+          if (e.is_preview) continue;
+          const s = sessionMap.get(e.session_id) || {
+            sessionId: e.session_id, visitorId: e.visitor_id,
+            city: e.city, neighborhood: e.neighborhood, state: e.state,
+            trafficChannel: e.traffic_channel, trafficSource: e.traffic_source,
+            totalDurationSeconds: 0, totalPageViews: 0, totalEvents: 0, lastSeen: e.created_at
+          };
+          if (e.event_type === 'page_view') {
+            s.totalDurationSeconds += (e.duration_seconds || 0);
+            s.totalPageViews++;
+          }
+          s.totalEvents++;
+          sessionMap.set(e.session_id, s);
+        }
+        return [[...sessionMap.values()]];
+      }
+
+      if (normalizedSql.includes('duration_seconds AS durationSeconds')) {
+        const matching = [...events.values()].filter(e => !e.is_preview).map(e => ({
+          sessionId: e.session_id,
+          type: e.event_type,
+          label: e.event_label || e.event_name || e.page_path,
+          pagePath: e.page_path,
+          durationSeconds: e.duration_seconds || 0,
+          createdAt: e.created_at
+        }));
+        return [matching];
       }
 
       return [[]];
@@ -423,3 +470,38 @@ test('12. verifies navigation journey step tracking A -> B -> A for fast navigat
   assert.equal(journey.steps[1].path, '/tratamentos');
   assert.equal(journey.steps[2].path, '/');
 });
+
+test('13. calculates directions stats (Maps, Waze, Uber) and visitor sessions with hotScore', async () => {
+  const pool = createMockPool();
+
+  // Visitor 1: views page, views treatment, clicks Waze (Hot lead)
+  await recordAnalyticsEvent(pool, {
+    eventId: 'pv_waze_1', visitorId: 'v_hot_1', sessionId: 's_hot_1', type: 'page_view', pagePath: '/', durationSeconds: 60
+  });
+  await recordAnalyticsEvent(pool, {
+    eventId: 'tv_1', visitorId: 'v_hot_1', sessionId: 's_hot_1', type: 'treatment_view', name: 'Endoslim', pagePath: '/tratamentos/endoslim'
+  });
+  await recordAnalyticsEvent(pool, {
+    eventId: 'cta_waze', visitorId: 'v_hot_1', sessionId: 's_hot_1', type: 'cta_click', label: 'Rota Waze', pagePath: '/contato'
+  });
+
+  // Visitor 2: clicks Google Maps
+  await recordAnalyticsEvent(pool, {
+    eventId: 'cta_maps', visitorId: 'v_2', sessionId: 's_2', type: 'cta_click', label: 'Rota Google Maps', pagePath: '/contato'
+  });
+
+  const stats = await getAnalyticsStats(pool);
+  assert.ok(stats.directions);
+  assert.equal(stats.directions.totalClicks, 2);
+  const wazeApp = stats.directions.apps.find(a => a.app === 'Waze');
+  const mapsApp = stats.directions.apps.find(a => a.app === 'Google Maps');
+  assert.ok(wazeApp && wazeApp.clicks === 1);
+  assert.ok(mapsApp && mapsApp.clicks === 1);
+
+  assert.ok(Array.isArray(stats.visitorSessions));
+  const hotSession = stats.visitorSessions.find(s => s.sessionId === 's_hot_1');
+  assert.ok(hotSession);
+  assert.ok(hotSession.hotScore >= 50);
+  assert.equal(hotSession.isHotLead, true);
+});
+
