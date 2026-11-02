@@ -19,3 +19,5 @@ Publicação segue `docs/crm-deployment.md`. Aplicar a versão testada no GitHub
 Validação: `node --test *.test.mjs *.test.ts`, `npm run lint`, `npm run build`, `node --check server.ts`; conferir 401 sem credencial e CSV sem dados pessoais com conexão autenticada. Não alterar status de contatos reais para testes. Confirmar uma importação real quando houver clique legítimo elegível.
 
 Validation on 2026-11-02: 114 automated tests passed. MariaDB 10.11.19 temporary-table test returned timestamp_preserved=1, context_preserved=1, original_click_preserved=1, utc_timestamp_valid=1. No live lead records were touched.
+
+Production rollout on 2026-11-02: published via main, AI Studio pulled GitHub changes. Hosting selector did not persist the new variable, so GOOGLE_ADS_FEED_SECRET is in an untracked server-only .env (0600), loaded by dotenv. New Google ledger must use utf8mb4_unicode_ci to match nido_leads.id. Existing empty ledger was migrated with ALTER TABLE nido_google_qualifications CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci after reproducing MariaDB error 1267 using a count-only JOIN. No patient rows changed.

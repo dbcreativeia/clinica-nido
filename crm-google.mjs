@@ -38,7 +38,7 @@ export function createGoogleLedger({pool,now=Date.now,isAllowed}){
   if(!starting)starting=pool.query(`CREATE TABLE IF NOT EXISTS nido_google_qualifications (
    lead_id VARCHAR(100) PRIMARY KEY,gclid VARCHAR(255) NOT NULL,qualified_at VARCHAR(30) NOT NULL,
    order_id CHAR(64) NOT NULL,google_context JSON NOT NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e=>{starting=null;throw e;});
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`).catch(e=>{starting=null;throw e;});
   await starting;
  }
  async function qualify(id){
