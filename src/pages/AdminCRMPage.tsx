@@ -1110,16 +1110,16 @@ export const AdminCRMPage: React.FC = () => {
             />
           </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs">
-              <Filter className="w-3.5 h-3.5 text-[#8C7359]" />
-              <span className="text-[#66534B] font-medium">Origem:</span>
+          <div className="grid grid-cols-2 sm:flex sm:flex-nowrap items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
+              <Filter className="w-3.5 h-3.5 text-[#8C7359] shrink-0 hidden sm:block" />
+              <span className="text-[#66534B] font-medium shrink-0">Origem:</span>
               <select
                 value={channelFilter}
                 onChange={(e) => setChannelFilter(e.target.value)}
-                className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer"
+                className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
               >
-                <option value="todos">Todas as Origens ({stats.total})</option>
+                <option value="todos">Todas ({stats.total})</option>
                 <option value="Google Ads">Google ADS ({stats.googleAdsLeads})</option>
                 <option value="Google Orgânico">Google Orgânico ({stats.googleOrganicLeads})</option>
                 <option value="Meta Ads">Meta Ads ({stats.metaAdsLeads})</option>
@@ -1131,18 +1131,18 @@ export const AdminCRMPage: React.FC = () => {
               </select>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs">
-              <span className="text-[#66534B] font-medium">Status:</span>
+            <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
+              <span className="text-[#66534B] font-medium shrink-0">Status:</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer"
+                className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
               >
-                <option value="todos">Todos os Status</option>
+                <option value="todos">Todos</option>
                 <option value="novo">Novo</option>
                 <option value="em_contato">Em Contato</option>
-                <option value="agendado">Avaliação Agendada</option>
-                <option value="compareceu">Compareceu à Avaliação</option>
+                <option value="agendado">Agendado</option>
+                <option value="compareceu">Compareceu</option>
                 <option value="convertido">Convertido</option>
                 <option value="perdido">Perdido</option>
               </select>
@@ -1150,19 +1150,148 @@ export const AdminCRMPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Leads Table */}
+        {/* Leads List (Mobile Cards + Desktop Compact Table) */}
         <div className="bg-[#FFFFFF] rounded-3xl border border-[#E5DAD0] shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+          {/* Mobile View: Card List */}
+          <div className="md:hidden divide-y divide-[#E5DAD0]/80">
+            {filteredLeads.length === 0 ? (
+              <div className="py-12 px-4 text-center text-[#66534B]">
+                {isLoading ? (
+                  <div className="flex items-center justify-center gap-2 text-xs">
+                    <RefreshCw className="w-4 h-4 animate-spin text-[#8C7359]" />
+                    <span>Carregando contatos...</span>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="font-semibold text-sm">Nenhum lead encontrado com os filtros atuais.</p>
+                    <p className="text-xs mt-1 text-[#8C7359]">Os novos contatos aparecerão aqui automaticamente.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              filteredLeads.map((lead) => {
+                const phoneDigits = (lead.phone || '').replace(/\D/g, '');
+                const cleanPhone = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`;
+                const whatsappDirectUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Olá ${lead.name}, tudo bem? Aqui é da Clínica Nidô. Recebemos seu contato com interesse em ${lead.serviceInterest}.`)}`;
+                const hot = calculateLeadHotScore(lead);
+
+                return (
+                  <div key={lead.id} className="p-4 space-y-3 hover:bg-[#FAF6F0]/50 transition-colors">
+                    {/* Top Row: Name + Hot Badge & Date/Time */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-sm text-[#1F1916] leading-tight">{lead.name}</span>
+                          {hot.isHot && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-xs shrink-0"
+                              title={`Score de Alto Potencial: ${hot.score} pts`}
+                            >
+                              <Flame className="w-2.5 h-2.5 fill-current" />
+                              <span>Hot</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-[#66534B] mt-0.5 flex-wrap">
+                          <span>{lead.phone}</span>
+                          {lead.email && !lead.email.includes('@nido.local') && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate max-w-[180px]">{lead.email}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0 text-[10px] text-[#8C7359] font-mono">
+                        <div>{new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
+                        <div>{new Date(lead.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                    </div>
+
+                    {/* Middle Box: Service Interest & Traffic Origin */}
+                    <div className="bg-[#FAF6F0] p-2.5 rounded-xl border border-[#E5DAD0]/70 flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-[#8C7359] block">
+                          Interesse / Botão
+                        </span>
+                        <span className="font-semibold text-xs text-[#1F1916] block truncate">
+                          {lead.serviceInterest || 'Geral'}
+                        </span>
+                        <span className="text-[10px] text-[#66534B] block truncate">
+                          {lead.ctaLocation || 'Site'}
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {renderChannelBadge(lead.trafficChannel)}
+                        {lead.trafficCampaign && lead.trafficCampaign !== 'padrao' && lead.trafficCampaign !== 'direto' && (
+                          <div className="text-[9px] text-[#66534B] mt-0.5 font-mono truncate max-w-[110px]">
+                            {lead.trafficCampaign}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Action Bar: WhatsApp + Status + View/Delete */}
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      <a
+                        href={whatsappDirectUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] font-bold text-xs transition-colors shrink-0"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+
+                      <select
+                        value={lead.status || 'novo'}
+                        onChange={(e) => handleStatusChange(lead.id, e.target.value)}
+                        className={`flex-1 min-w-0 text-xs font-bold px-2.5 py-2 rounded-xl border focus:outline-none cursor-pointer truncate ${getStatusBadgeClass(lead.status)}`}
+                      >
+                        <option value="novo">Novo</option>
+                        <option value="em_contato">Em Contato</option>
+                        <option value="agendado">Agendado</option>
+                        <option value="compareceu">Compareceu</option>
+                        <option value="convertido">Convertido</option>
+                        <option value="perdido">Perdido</option>
+                      </select>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setSelectedLead(lead)}
+                          title="Ver detalhes completos"
+                          className="p-2 rounded-xl bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] border border-[#E5DAD0] transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLead(lead.id)}
+                          title="Excluir lead"
+                          className="p-2 rounded-xl bg-[#FAF6F0] hover:bg-red-50 hover:text-red-700 text-[#8C7359] border border-[#E5DAD0] transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop View: Compact Fixed Table */}
+          <div className="hidden md:block w-full">
+            <table className="w-full table-fixed text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#FAF6F0] border-b border-[#E5DAD0] text-[#5C4B44] text-[11px] uppercase tracking-wider font-bold">
-                  <th className="py-4 px-4 sm:px-6">Data / Hora</th>
-                  <th className="py-4 px-4 sm:px-6">Paciente / Lead</th>
-                  <th className="py-4 px-4 sm:px-6">WhatsApp</th>
-                  <th className="py-4 px-4 sm:px-6">Interesse / Origem Botão</th>
-                  <th className="py-4 px-4 sm:px-6">Origem Tráfego</th>
-                  <th className="py-4 px-4 sm:px-6">Status</th>
-                  <th className="py-4 px-4 sm:px-6 text-right">Ações</th>
+                <tr className="bg-[#FAF6F0] border-b border-[#E5DAD0] text-[#5C4B44] text-[10px] uppercase tracking-wider font-bold">
+                  <th className="py-3 px-2.5 w-[76px]">Data</th>
+                  <th className="py-3 px-2.5 w-[21%]">Paciente / Lead</th>
+                  <th className="py-3 px-2.5 w-[135px]">WhatsApp</th>
+                  <th className="py-3 px-2.5 w-[22%]">Interesse / Botão</th>
+                  <th className="py-3 px-2.5 w-[135px]">Origem</th>
+                  <th className="py-3 px-2.5 w-[148px]">Status</th>
+                  <th className="py-3 px-2.5 w-[68px] text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5DAD0]/70 text-[#1F1916]">
@@ -1191,107 +1320,108 @@ export const AdminCRMPage: React.FC = () => {
                     return (
                       <tr key={lead.id} className="hover:bg-[#FAF6F0]/60 transition-colors">
                         {/* Data / Hora */}
-                        <td className="py-4 px-4 sm:px-6 whitespace-nowrap text-xs text-[#66534B]">
-                          <div>{new Date(lead.createdAt).toLocaleDateString('pt-BR')}</div>
-                          <div className="font-mono text-[11px] text-[#8C7359]">
+                        <td className="py-2.5 px-2.5 whitespace-nowrap text-[11px] text-[#66534B]">
+                          <div>{new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
+                          <div className="font-mono text-[10px] text-[#8C7359]">
                             {new Date(lead.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </td>
 
                         {/* Nome & Email */}
-                        <td className="py-4 px-4 sm:px-6">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-[#1F1916]">{lead.name}</span>
+                        <td className="py-2.5 px-2.5 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-bold text-[#1F1916] truncate" title={lead.name}>{lead.name}</span>
                             {(() => {
                               const hot = calculateLeadHotScore(lead);
                               if (!hot.isHot) return null;
                               return (
                                 <span 
-                                  className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-xs"
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-xs shrink-0"
                                   title={`Score de Alto Potencial: ${hot.score} pts`}
                                 >
                                   <Flame className="w-2.5 h-2.5 fill-current" />
-                                  <span>Hot Lead</span>
+                                  <span>Hot</span>
                                 </span>
                               );
                             })()}
                           </div>
                           <a
                             href={`mailto:${lead.email}`}
-                            className="inline-flex items-center gap-1 text-[11px] text-[#66534B] hover:text-[#44342E] transition-colors mt-0.5"
+                            title={lead.email}
+                            className="flex items-center gap-1 text-[11px] text-[#66534B] hover:text-[#44342E] transition-colors mt-0.5 min-w-0"
                           >
-                            <Mail className="w-3 h-3 text-[#8C7359]" />
-                            <span>{lead.email}</span>
+                            <Mail className="w-3 h-3 text-[#8C7359] shrink-0" />
+                            <span className="truncate">{lead.email}</span>
                           </a>
                         </td>
 
                         {/* WhatsApp + Quick Action */}
-                        <td className="py-4 px-4 sm:px-6 whitespace-nowrap">
-                          <div className="font-medium text-xs text-[#44342E]">{lead.phone}</div>
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">
+                          <div className="font-medium text-[11px] text-[#44342E] truncate">{lead.phone}</div>
                           <a
                             href={whatsappDirectUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] font-bold text-[11px] mt-1 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] font-bold text-[10px] mt-0.5 transition-colors"
                           >
-                            <Phone className="w-3 h-3" />
+                            <Phone className="w-2.5 h-2.5" />
                             <span>Conversar</span>
-                            <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                            <ExternalLink className="w-2 h-2 opacity-60" />
                           </a>
                         </td>
 
                         {/* Interesse / CTA Location */}
-                        <td className="py-4 px-4 sm:px-6">
-                          <span className="font-semibold block text-xs text-[#1F1916]">
+                        <td className="py-2.5 px-2.5 min-w-0">
+                          <span className="font-semibold block text-xs text-[#1F1916] truncate" title={lead.serviceInterest || 'Geral'}>
                             {lead.serviceInterest || 'Geral'}
                           </span>
-                          <span className="text-[11px] text-[#8C7359] block mt-0.5 max-w-xs truncate" title={lead.ctaLocation}>
+                          <span className="text-[11px] text-[#8C7359] block mt-0.5 truncate" title={lead.ctaLocation}>
                             {lead.ctaLocation || 'Site'}
                           </span>
                         </td>
 
                         {/* Origem Tráfego */}
-                        <td className="py-4 px-4 sm:px-6 whitespace-nowrap">
-                          <div>{renderChannelBadge(lead.trafficChannel)}</div>
+                        <td className="py-2.5 px-2.5 min-w-0">
+                          <div className="truncate">{renderChannelBadge(lead.trafficChannel)}</div>
                           {lead.trafficCampaign && lead.trafficCampaign !== 'padrao' && lead.trafficCampaign !== 'direto' && (
-                            <div className="text-[10px] text-[#66534B] mt-1 font-mono truncate max-w-[140px]" title={`Campanha: ${lead.trafficCampaign}`}>
+                            <div className="text-[10px] text-[#66534B] mt-0.5 font-mono truncate" title={`Campanha: ${lead.trafficCampaign}`}>
                               {lead.trafficCampaign}
                             </div>
                           )}
                         </td>
 
                         {/* Status Dropdown */}
-                        <td className="py-4 px-4 sm:px-6 whitespace-nowrap">
+                        <td className="py-2.5 px-2.5">
                           <select
                             value={lead.status || 'novo'}
                             onChange={(e) => handleStatusChange(lead.id, e.target.value)}
-                            className={`text-xs font-bold px-2.5 py-1 rounded-lg border focus:outline-none cursor-pointer ${getStatusBadgeClass(lead.status)}`}
+                            className={`w-full text-[11px] font-bold px-2 py-1 rounded-lg border focus:outline-none cursor-pointer truncate ${getStatusBadgeClass(lead.status)}`}
                           >
                             <option value="novo">Novo</option>
                             <option value="em_contato">Em Contato</option>
-                            <option value="agendado">Avaliação Agendada</option>
-                            <option value="compareceu">Compareceu à Avaliação</option>
+                            <option value="agendado">Agendado</option>
+                            <option value="compareceu">Compareceu</option>
                             <option value="convertido">Convertido</option>
                             <option value="perdido">Perdido</option>
                           </select>
                         </td>
 
                         {/* Ações */}
-                        <td className="py-4 px-4 sm:px-6 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
+                        <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => setSelectedLead(lead)}
                               title="Ver detalhes completos do lead"
                               className="p-1.5 rounded-lg bg-[#FAF6F0] hover:bg-[#EFE6DC] text-[#44342E] transition-colors cursor-pointer"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleDeleteLead(lead.id)}
                               title="Excluir este lead"
                               className="p-1.5 rounded-lg bg-[#FAF6F0] hover:bg-red-50 hover:text-red-700 text-[#8C7359] transition-colors cursor-pointer"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
