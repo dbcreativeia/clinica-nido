@@ -27,3 +27,15 @@ test('an old Meta-only advertising grant asks again before adding Google measure
  const a=app({analytics:true,meta:true,noticeVersion:'nido-privacy-2026-11-01',timestamp:Date.now()});
  const tree=a.render();assert.ok(tree);assert.match(a.text(tree),/Google/);
 });
+test('mobile browsers without crypto.randomUUID, with corrupted receipt history or blocked gtag still save consent without error',()=>{
+ const a=app();
+ a.values.set('nido_privacy_receipts','{corrupted-json');
+ a.values.set('nido_privacy_receipts_pending','"not-an-array"');
+ const tree=a.render();
+ const accept=a.nodes(tree).find(n=>n.type==='button'&&a.text(n)==='Aceitar opcionais');
+ accept.props.onClick();
+ assert.equal(a.render(),null);
+ const saved=JSON.parse(a.values.get('nido_cookie_consent'));
+ assert.equal(saved.analytics,true);
+ assert.equal(saved.meta,true);
+});

@@ -12,15 +12,19 @@ export const ConsentBanner:React.FC=()=>{
  const [analytics,setAnalytics]=useState(false),[meta,setMeta]=useState(false),[crmLocation,setCrmLocation]=useState(false),[error,setError]=useState('');
  function syncChoices(){const c=readCookiePreferences();setAnalytics(c?.analytics===true);setMeta(c?.meta===true);setCrmLocation(hasCrmLocationConsent());}
  useEffect(()=>{
-  const saved=readCookiePreferences();syncChoices();setVisible(!saved||(saved.meta&&saved.noticeVersion!==NOTICE_VERSION));trackGooglePageView();void flushPrivacyReceipts();
+  const saved=readCookiePreferences();syncChoices();setVisible(!saved||(saved.meta&&saved.noticeVersion!==NOTICE_VERSION));try{trackGooglePageView();}catch{}void flushPrivacyReceipts();
   const reopen=()=>{syncChoices();setError('');setCustom(true);setVisible(true);};
-  const storage=(e:StorageEvent)=>{privacyStorageChanged(e);syncChoices();refreshMetaConsent();trackGooglePageView();};
+  const storage=(e:StorageEvent)=>{privacyStorageChanged(e);syncChoices();try{refreshMetaConsent();}catch{}try{trackGooglePageView();}catch{}};
   const online=()=>{void flushPrivacyReceipts();};
   window.addEventListener('nido:open-cookie-settings',reopen);window.addEventListener('storage',storage);window.addEventListener('online',online);
   return()=>{window.removeEventListener('nido:open-cookie-settings',reopen);window.removeEventListener('storage',storage);window.removeEventListener('online',online);};
  },[]);
  function choose(a:boolean,m:boolean){
-  try{const previouslyAllowed=readCookiePreferences()?.meta===true;saveCookiePreferences(a,m);refreshMetaConsent();syncGoogleConsent();if(a)trackGooglePageView();
+  try{
+   const previouslyAllowed=readCookiePreferences()?.meta===true;
+   saveCookiePreferences(a,m);
+   try{refreshMetaConsent();}catch{}
+   try{syncGoogleConsent();if(a)trackGooglePageView();}catch{}
    if(m&&!previouslyAllowed){try{initTrafficAttribution();void trackMetaPageView();}catch{/* Tracking failure never invalidates the saved choice. */}}
    setAnalytics(a);setMeta(m);setVisible(false);setError('');
   }catch{setError('Não foi possível salvar sua escolha neste navegador. Os rastreadores opcionais permanecem sujeitos à última preferência válida.');}
