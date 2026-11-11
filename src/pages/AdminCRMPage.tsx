@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { 
   Users, 
   Search, 
@@ -30,6 +32,171 @@ import {
 import { SEOHead } from '../components/SEOHead';
 import { InternalAnalyticsDashboard } from '../components/admin/InternalAnalyticsDashboard';
 import { LeadsGeoMap } from '../components/admin/LeadsGeoMap';
+
+const CLINIC_COORDS: [number, number] = [-23.5306981, -46.6729484];
+
+const LeadLocationMiniMap: React.FC<{
+  latitude?: number;
+  longitude?: number;
+  leadName: string;
+  addressLabel?: string;
+}> = ({ latitude, longitude, leadName, addressLabel }) => {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+
+  const hasExactCoords =
+    latitude != null &&
+    longitude != null &&
+    Number.isFinite(Number(latitude)) &&
+    Number.isFinite(Number(longitude));
+
+  const targetLat = hasExactCoords ? Number(latitude) : CLINIC_COORDS[0];
+  const targetLng = hasExactCoords ? Number(longitude) : CLINIC_COORDS[1];
+
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+
+    const map = L.map(mapContainerRef.current, {
+      center: [targetLat, targetLng],
+      zoom: hasExactCoords ? 15 : 16,
+      scrollWheelZoom: false,
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const clinicPinIcon = L.divIcon({
+      className: 'clinic-detail-pin',
+      html: `<div style="
+        background-color: #8C7359;
+        width: 26px;
+        height: 26px;
+        border-radius: 9999px;
+        border: 2px solid #FFFFFF;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #FFFFFF;
+        font-size: 11px;
+        font-weight: 800;
+      ">N</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
+
+    const clinicMarker = L.marker(CLINIC_COORDS, { icon: clinicPinIcon })
+      .addTo(map)
+      .bindPopup(
+        '<div style="font-family: sans-serif; font-size: 12px; line-height: 1.35;"><strong style="color: #1F1916;">Clínica Nidô (Água Branca)</strong><div style="color: #5C4B44; margin-top: 2px;">Rua Dona Germaine Burchard, 499 — Água Branca, SP</div></div>'
+      );
+
+    if (hasExactCoords) {
+      const leadPinIcon = L.divIcon({
+        className: 'lead-detail-pin',
+        html: `<div style="
+          background-color: #44342E;
+          width: 32px;
+          height: 32px;
+          border-radius: 9999px;
+          border: 3px solid #FFFFFF;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #FFFFFF;
+          font-size: 15px;
+        ">📍</div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -14],
+      });
+
+      const marker = L.marker([targetLat, targetLng], { icon: leadPinIcon }).addTo(map);
+      marker.bindPopup(
+        `<div style="font-family: sans-serif; font-size: 12px; line-height: 1.35;">
+          <strong style="color: #1F1916;">${leadName}</strong>
+          ${addressLabel ? `<div style="color: #5C4B44; margin-top: 2px;">${addressLabel}</div>` : ''}
+        </div>`
+      );
+      setTimeout(() => {
+        try {
+          marker.openPopup();
+        } catch {
+          // ignore if unmounted
+        }
+      }, 250);
+    } else {
+      setTimeout(() => {
+        try {
+          clinicMarker.openPopup();
+        } catch {
+          // ignore if unmounted
+        }
+      }, 250);
+    }
+
+    mapInstanceRef.current = map;
+
+    const t1 = window.setTimeout(() => map.invalidateSize(), 60);
+    const t2 = window.setTimeout(() => map.invalidateSize(), 220);
+    const t3 = window.setTimeout(() => map.invalidateSize(), 500);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [targetLat, targetLng, hasExactCoords, leadName, addressLabel]);
+
+  return (
+    <div className="space-y-2 pt-2">
+      {!hasExactCoords && (
+        <div className="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-medium flex items-center justify-between gap-2">
+          <span>⚠️ Este contato não autorizou o GPS no navegador (exibindo referência da Clínica Nidô no mapa).</span>
+        </div>
+      )}
+      <div
+        ref={mapContainerRef}
+        style={{ height: '240px', minHeight: '240px', width: '100%' }}
+        className="w-full rounded-xl border border-[#E5DAD0] overflow-hidden shadow-xs z-0"
+      />
+      <div className="flex items-center justify-between text-[11px] text-[#66534B] px-0.5">
+        <span>
+          {hasExactCoords
+            ? '📍 Ponto exato capturado no dispositivo do lead'
+            : '📍 Referência: Clínica Nidô (Rua Dona Germaine Burchard, 499 — Água Branca)'}
+        </span>
+        <a
+          href={
+            hasExactCoords
+              ? `https://www.google.com/maps?q=${targetLat},${targetLng}`
+              : addressLabel && addressLabel !== 'Não informada'
+              ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressLabel)}`
+              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('Rua Dona Germaine Burchard, 499 - Água Branca, São Paulo - SP')}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 font-bold text-[#44342E] hover:underline"
+        >
+          <span>Abrir no Google Maps</span>
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+    </div>
+  );
+};
 
 export interface StoredLead {
   id: string;
@@ -157,6 +324,9 @@ export const AdminCRMPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [channelFilter, setChannelFilter] = useState('todos');
   const [statusFilter, setStatusFilter] = useState('todos');
+  const [periodFilter, setPeriodFilter] = useState<'todos' | 'hoje' | 'ontem' | '7d' | '30d' | 'este_mes' | 'custom'>('todos');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [selectedLead, setSelectedLead] = useState<StoredLead | null>(null);
   const [metaNotification, setMetaNotification] = useState<{
     show: boolean;
@@ -476,9 +646,62 @@ export const AdminCRMPage: React.FC = () => {
     }
   };
 
-  // Filtered Leads
-  const filteredLeads = useMemo(() => {
+  // Leads filtered by Date Period first
+  const periodFilteredLeads = useMemo(() => {
+    if (periodFilter === 'todos') return leads;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
     return leads.filter((l) => {
+      if (!l.createdAt) return false;
+      const leadDate = new Date(l.createdAt);
+      if (Number.isNaN(leadDate.getTime())) return false;
+
+      if (periodFilter === 'hoje') {
+        return leadDate >= startOfToday && leadDate <= endOfToday;
+      }
+      if (periodFilter === 'ontem') {
+        const startOfYesterday = new Date(startOfToday);
+        startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+        const endOfYesterday = new Date(startOfToday.getTime() - 1);
+        return leadDate >= startOfYesterday && leadDate <= endOfYesterday;
+      }
+      if (periodFilter === '7d') {
+        const start7d = new Date(startOfToday);
+        start7d.setDate(start7d.getDate() - 6);
+        return leadDate >= start7d && leadDate <= endOfToday;
+      }
+      if (periodFilter === '30d') {
+        const start30d = new Date(startOfToday);
+        start30d.setDate(start30d.getDate() - 29);
+        return leadDate >= start30d && leadDate <= endOfToday;
+      }
+      if (periodFilter === 'este_mes') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        return leadDate >= startOfMonth && leadDate <= endOfToday;
+      }
+      if (periodFilter === 'custom') {
+        if (customStartDate) {
+          const [y, m, d] = customStartDate.split('-').map(Number);
+          const startCustom = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+          if (leadDate < startCustom) return false;
+        }
+        if (customEndDate) {
+          const [y, m, d] = customEndDate.split('-').map(Number);
+          const endCustom = new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999);
+          if (leadDate > endCustom) return false;
+        }
+        return true;
+      }
+      return true;
+    });
+  }, [leads, periodFilter, customStartDate, customEndDate]);
+
+  // Leads matching Period + Search + Channel (used to compute exact Status counts)
+  const baseMatchingLeads = useMemo(() => {
+    return periodFilteredLeads.filter((l) => {
       const matchesSearch =
         !searchTerm ||
         l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -486,12 +709,10 @@ export const AdminCRMPage: React.FC = () => {
         l.phone?.includes(searchTerm) ||
         l.serviceInterest?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesStatus =
-        statusFilter === 'todos' ||
-        l.status?.toLowerCase() === statusFilter.toLowerCase();
+      if (!matchesSearch) return false;
 
       if (channelFilter === 'hot') {
-        return matchesSearch && matchesStatus && calculateLeadHotScore(l).isHot;
+        return calculateLeadHotScore(l).isHot;
       }
 
       const matchesChannel =
@@ -501,26 +722,58 @@ export const AdminCRMPage: React.FC = () => {
         (channelFilter === 'Facebook' && l.trafficChannel?.toLowerCase().includes('facebook')) ||
         (channelFilter === 'ChatGPT / IA' && (l.trafficChannel === 'ChatGPT / IA' || l.trafficChannel?.toLowerCase().includes('chatgpt')));
 
-      return matchesSearch && matchesChannel && matchesStatus;
+      return matchesChannel;
     });
-  }, [leads, searchTerm, channelFilter, statusFilter]);
+  }, [periodFilteredLeads, searchTerm, channelFilter]);
 
-  // Statistics
+  // Status Counts based on active Period + Channel + Search filters
+  const statusCounts = useMemo(() => {
+    const counts = {
+      todos: baseMatchingLeads.length,
+      novo: 0,
+      em_contato: 0,
+      agendado: 0,
+      compareceu: 0,
+      convertido: 0,
+      perdido: 0,
+    };
+
+    for (const lead of baseMatchingLeads) {
+      const st = (lead.status || 'novo').toLowerCase() as keyof typeof counts;
+      if (st in counts && st !== 'todos') {
+        counts[st] += 1;
+      } else {
+        counts.novo += 1;
+      }
+    }
+
+    return counts;
+  }, [baseMatchingLeads]);
+
+  // Final Filtered Leads (including Status filter)
+  const filteredLeads = useMemo(() => {
+    if (statusFilter === 'todos') return baseMatchingLeads;
+    return baseMatchingLeads.filter(
+      (l) => (l.status || 'novo').toLowerCase() === statusFilter.toLowerCase()
+    );
+  }, [baseMatchingLeads, statusFilter]);
+
+  // Statistics (respects selected Date Period)
   const stats = useMemo(() => {
-    const total = leads.length;
+    const total = periodFilteredLeads.length;
     const today = new Date().toDateString();
     const leadsToday = leads.filter(
       (l) => new Date(l.createdAt).toDateString() === today
     ).length;
-    const hotLeadsCount = leads.filter((l) => calculateLeadHotScore(l).isHot).length;
-    const googleAdsLeads = leads.filter((l) => l.trafficChannel === 'Google Ads').length;
-    const googleOrganicLeads = leads.filter((l) => l.trafficChannel === 'Google Orgânico').length;
-    const metaAdsLeads = leads.filter((l) => l.trafficChannel === 'Meta Ads').length;
-    const instagramLeads = leads.filter((l) => l.trafficChannel === 'Instagram' || l.trafficChannel === 'Instagram Orgânico').length;
-    const facebookLeads = leads.filter((l) => l.trafficChannel === 'Facebook' || l.trafficChannel === 'Facebook Orgânico').length;
-    const chatgptLeads = leads.filter((l) => l.trafficChannel === 'ChatGPT / IA').length;
-    const directLeads = leads.filter((l) => l.trafficChannel === 'Direto').length;
-    const newLeads = leads.filter((l) => l.status === 'novo').length;
+    const hotLeadsCount = periodFilteredLeads.filter((l) => calculateLeadHotScore(l).isHot).length;
+    const googleAdsLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'Google Ads').length;
+    const googleOrganicLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'Google Orgânico').length;
+    const metaAdsLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'Meta Ads').length;
+    const instagramLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'Instagram' || l.trafficChannel === 'Instagram Orgânico').length;
+    const facebookLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'Facebook' || l.trafficChannel === 'Facebook Orgânico').length;
+    const chatgptLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'ChatGPT / IA').length;
+    const directLeads = periodFilteredLeads.filter((l) => l.trafficChannel === 'Direto').length;
+    const newLeads = periodFilteredLeads.filter((l) => (l.status || 'novo') === 'novo').length;
 
     return { 
       total, 
@@ -535,7 +788,7 @@ export const AdminCRMPage: React.FC = () => {
       directLeads,
       newLeads 
     };
-  }, [leads]);
+  }, [periodFilteredLeads, leads]);
 
   // If not authenticated, render Login Page
   if (!isAuthenticated) {
@@ -1097,57 +1350,168 @@ export const AdminCRMPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Search & Filters */}
-        <div className="bg-[#FFFFFF] p-4 sm:p-5 rounded-2xl border border-[#E5DAD0] shadow-xs flex flex-col md:flex-row items-stretch md:items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-[#8C7359] absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar por nome, telefone, e-mail ou tratamento..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0] text-xs sm:text-sm text-[#1F1916] focus:outline-none focus:border-[#44342E]"
-            />
+        {/* Status Breakdown Strip (Quantos estão em cada status) */}
+        <div className="bg-[#FFFFFF] p-4 rounded-2xl border border-[#E5DAD0] shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-[#44342E] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#8C7359]" />
+              Quantidade por Status do Funil
+            </span>
+            <span className="text-[11px] text-[#8C7359]">
+              {statusFilter !== 'todos' ? (
+                <button
+                  onClick={() => setStatusFilter('todos')}
+                  className="font-bold text-[#44342E] underline cursor-pointer"
+                >
+                  Limpar filtro de status
+                </button>
+              ) : (
+                'Clique em um status para filtrar'
+              )}
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:flex sm:flex-nowrap items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
-              <Filter className="w-3.5 h-3.5 text-[#8C7359] shrink-0 hidden sm:block" />
-              <span className="text-[#66534B] font-medium shrink-0">Origem:</span>
-              <select
-                value={channelFilter}
-                onChange={(e) => setChannelFilter(e.target.value)}
-                className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
-              >
-                <option value="todos">Todas ({stats.total})</option>
-                <option value="Google Ads">Google ADS ({stats.googleAdsLeads})</option>
-                <option value="Google Orgânico">Google Orgânico ({stats.googleOrganicLeads})</option>
-                <option value="Meta Ads">Meta Ads ({stats.metaAdsLeads})</option>
-                <option value="Instagram">Instagram ({stats.instagramLeads})</option>
-                <option value="Facebook">Facebook ({stats.facebookLeads})</option>
-                <option value="ChatGPT / IA">ChatGPT / IA ({stats.chatgptLeads})</option>
-                <option value="Direto">Direto ({stats.directLeads})</option>
-                <option value="Outro">Outro</option>
-              </select>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+            {[
+              { id: 'todos', label: 'Todos', count: statusCounts.todos, badge: 'bg-[#FAF6F0] text-[#44342E] border-[#E5DAD0]', activeRing: 'ring-2 ring-[#44342E] border-[#44342E]' },
+              { id: 'novo', label: 'Novo', count: statusCounts.novo, badge: 'bg-blue-50 text-blue-800 border-blue-200', activeRing: 'ring-2 ring-blue-600 border-blue-600' },
+              { id: 'em_contato', label: 'Em Contato', count: statusCounts.em_contato, badge: 'bg-amber-50 text-amber-800 border-amber-200', activeRing: 'ring-2 ring-amber-600 border-amber-600' },
+              { id: 'agendado', label: 'Agendado', count: statusCounts.agendado, badge: 'bg-purple-50 text-purple-800 border-purple-200', activeRing: 'ring-2 ring-purple-600 border-purple-600' },
+              { id: 'compareceu', label: 'Compareceu', count: statusCounts.compareceu, badge: 'bg-teal-50 text-teal-800 border-teal-200', activeRing: 'ring-2 ring-teal-600 border-teal-600' },
+              { id: 'convertido', label: 'Convertido', count: statusCounts.convertido, badge: 'bg-emerald-50 text-emerald-800 border-emerald-200', activeRing: 'ring-2 ring-emerald-600 border-emerald-600' },
+              { id: 'perdido', label: 'Perdido', count: statusCounts.perdido, badge: 'bg-gray-100 text-gray-700 border-gray-200', activeRing: 'ring-2 ring-gray-600 border-gray-600' },
+            ].map((item) => {
+              const isActive = statusFilter === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setStatusFilter(isActive && item.id !== 'todos' ? 'todos' : item.id)}
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all cursor-pointer ${item.badge} ${
+                    isActive ? `${item.activeRing} font-extrabold shadow-xs` : 'hover:opacity-90 font-semibold'
+                  }`}
+                >
+                  <span className="text-xs truncate">{item.label}</span>
+                  <span className="text-sm font-serif font-bold ml-1.5 shrink-0">{item.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Search & Filters (including Date Period selector) */}
+        <div className="bg-[#FFFFFF] p-4 sm:p-5 rounded-2xl border border-[#E5DAD0] shadow-xs space-y-3">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-[#8C7359] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Buscar por nome, telefone, e-mail ou tratamento..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0] text-xs sm:text-sm text-[#1F1916] focus:outline-none focus:border-[#44342E]"
+              />
             </div>
 
-            <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
-              <span className="text-[#66534B] font-medium shrink-0">Status:</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
-              >
-                <option value="todos">Todos</option>
-                <option value="novo">Novo</option>
-                <option value="em_contato">Em Contato</option>
-                <option value="agendado">Agendado</option>
-                <option value="compareceu">Compareceu</option>
-                <option value="convertido">Convertido</option>
-                <option value="perdido">Perdido</option>
-              </select>
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              {/* Date Period Selector */}
+              <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
+                <Calendar className="w-3.5 h-3.5 text-[#8C7359] shrink-0" />
+                <span className="text-[#66534B] font-medium shrink-0">Período:</span>
+                <select
+                  value={periodFilter}
+                  onChange={(e) => setPeriodFilter(e.target.value as typeof periodFilter)}
+                  className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
+                >
+                  <option value="todos">Todo o período ({leads.length})</option>
+                  <option value="hoje">Hoje</option>
+                  <option value="ontem">Ontem</option>
+                  <option value="7d">Últimos 7 dias</option>
+                  <option value="30d">Últimos 30 dias</option>
+                  <option value="este_mes">Este mês</option>
+                  <option value="custom">Personalizado (Datas)</option>
+                </select>
+              </div>
+
+              {/* Channel Selector */}
+              <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
+                <Filter className="w-3.5 h-3.5 text-[#8C7359] shrink-0 hidden sm:block" />
+                <span className="text-[#66534B] font-medium shrink-0">Origem:</span>
+                <select
+                  value={channelFilter}
+                  onChange={(e) => setChannelFilter(e.target.value)}
+                  className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
+                >
+                  <option value="todos">Todas ({stats.total})</option>
+                  <option value="Google Ads">Google ADS ({stats.googleAdsLeads})</option>
+                  <option value="Google Orgânico">Google Orgânico ({stats.googleOrganicLeads})</option>
+                  <option value="Meta Ads">Meta Ads ({stats.metaAdsLeads})</option>
+                  <option value="Instagram">Instagram ({stats.instagramLeads})</option>
+                  <option value="Facebook">Facebook ({stats.facebookLeads})</option>
+                  <option value="ChatGPT / IA">ChatGPT / IA ({stats.chatgptLeads})</option>
+                  <option value="Direto">Direto ({stats.directLeads})</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </div>
+
+              {/* Status Selector with counts */}
+              <div className="flex items-center gap-1.5 bg-[#FAF6F0] px-2.5 sm:px-3 py-2 rounded-xl border border-[#E5DAD0] text-xs min-w-0">
+                <span className="text-[#66534B] font-medium shrink-0">Status:</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-transparent font-bold text-[#1F1916] focus:outline-none cursor-pointer truncate w-full"
+                >
+                  <option value="todos">Todos ({statusCounts.todos})</option>
+                  <option value="novo">Novo ({statusCounts.novo})</option>
+                  <option value="em_contato">Em Contato ({statusCounts.em_contato})</option>
+                  <option value="agendado">Agendado ({statusCounts.agendado})</option>
+                  <option value="compareceu">Compareceu ({statusCounts.compareceu})</option>
+                  <option value="convertido">Convertido ({statusCounts.convertido})</option>
+                  <option value="perdido">Perdido ({statusCounts.perdido})</option>
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* Custom Date Range Inputs (shown when 'custom' is selected or when user wants date cut) */}
+          {periodFilter === 'custom' && (
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[#E5DAD0]/70 text-xs">
+              <div className="flex items-center gap-2">
+                <label className="text-[#66534B] font-semibold">De:</label>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0] text-[#1F1916] font-semibold focus:outline-none focus:border-[#44342E]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[#66534B] font-semibold">Até:</label>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0] text-[#1F1916] font-semibold focus:outline-none focus:border-[#44342E]"
+                />
+              </div>
+              {(customStartDate || customEndDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomStartDate('');
+                    setCustomEndDate('');
+                  }}
+                  className="text-xs font-bold text-[#8C7359] hover:text-[#44342E] underline cursor-pointer"
+                >
+                  Limpar datas
+                </button>
+              )}
+              <span className="text-[11px] text-[#8C7359] ml-auto">
+                Exibindo <strong>{filteredLeads.length}</strong> lead{filteredLeads.length === 1 ? '' : 's'} no período selecionado
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Leads List (Mobile Cards + Desktop Compact Table) */}
@@ -1480,6 +1844,89 @@ export const AdminCRMPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Contact details grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#FAF6F0] p-4 rounded-2xl border border-[#E5DAD0]">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">WhatsApp</span>
+                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.phone}</span>
+              </div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">E-mail</span>
+                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.email}</span>
+              </div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">Interesse</span>
+                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.serviceInterest}</span>
+              </div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">Botão de Origem (CTA)</span>
+                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.ctaLocation}</span>
+              </div>
+            </div>
+
+            {/* Localização Geográfica Atribuída + Mapa Interativo (Sempre visível na Ficha Detalhada) */}
+            <div className="p-4 rounded-2xl bg-[#FAF6F0] border border-[#E5DAD0] space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#1F1916] flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#8C7359]" />
+                  Localização Geográfica do Paciente:
+                </span>
+                <button
+                  onClick={() => {
+                    setActiveAdminTab('mapa');
+                    setSelectedLead(null);
+                  }}
+                  className="text-xs font-bold text-[#8C7359] hover:text-[#44342E] underline cursor-pointer"
+                >
+                  Ver no Mapa Geral de Leads →
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                <div>
+                  <span className="text-[#8C7359] block">Bairro:</span>
+                  <span className="font-bold text-[#1F1916]">
+                    {selectedLead.neighborhood && selectedLead.neighborhood !== 'Não informada' 
+                      ? selectedLead.neighborhood 
+                      : (selectedLead.displayAddress?.split(' - ')[1]?.split(',')[0] || 'Não informada')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#8C7359] block">Cidade / UF:</span>
+                  <span className="font-bold text-[#1F1916]">
+                    {selectedLead.city && selectedLead.city !== 'Não informada' 
+                      ? `${selectedLead.city} - ${selectedLead.state || 'SP'}` 
+                      : (selectedLead.state && selectedLead.state !== 'Não informada' ? `São Paulo - ${selectedLead.state}` : 'Não informada')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#8C7359] block">Coordenadas:</span>
+                  <span className="font-mono text-[11px] text-[#66534B]">
+                    {selectedLead.latitude != null && selectedLead.longitude != null 
+                      ? `${Number(selectedLead.latitude).toFixed(4)}, ${Number(selectedLead.longitude).toFixed(4)}` 
+                      : 'Não informada (sem GPS)'}
+                  </span>
+                </div>
+              </div>
+              {selectedLead.displayAddress && (
+                <div className="pt-2 border-t border-[#E5DAD0]/70 text-xs">
+                  <span className="text-[#8C7359] block font-medium">Endereço Identificado (GPS):</span>
+                  <span className="font-bold text-[#1F1916]">{selectedLead.displayAddress}</span>
+                </div>
+              )}
+
+              <LeadLocationMiniMap
+                latitude={selectedLead.latitude != null ? Number(selectedLead.latitude) : undefined}
+                longitude={selectedLead.longitude != null ? Number(selectedLead.longitude) : undefined}
+                leadName={selectedLead.name}
+                addressLabel={
+                  selectedLead.displayAddress ||
+                  [selectedLead.neighborhood, selectedLead.city]
+                    .filter((v) => v && v !== 'Não informada')
+                    .join(', ')
+                }
+              />
+            </div>
+
             {/* Hot Lead Score & Intent Card */}
             {(() => {
               const hot = calculateLeadHotScore(selectedLead);
@@ -1546,79 +1993,6 @@ export const AdminCRMPage: React.FC = () => {
             ) : (
               <div className="p-3 rounded-xl bg-[#FAF6F0] border border-[#E5DAD0] text-xs text-[#66534B] flex items-center justify-between">
                 <span>O evento de Lead será enviado à Meta assim que for marcado como <strong>Avaliação Agendada</strong> ou <strong>Convertido</strong>.</span>
-              </div>
-            )}
-
-            {/* Contact details grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#FAF6F0] p-4 rounded-2xl border border-[#E5DAD0]">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">WhatsApp</span>
-                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.phone}</span>
-              </div>
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">E-mail</span>
-                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.email}</span>
-              </div>
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">Interesse</span>
-                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.serviceInterest}</span>
-              </div>
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8C7359] block">Botão de Origem (CTA)</span>
-                <span className="text-sm font-semibold text-[#1F1916]">{selectedLead.ctaLocation}</span>
-              </div>
-            </div>
-
-            {/* Localização Geográfica Atribuída */}
-            {selectedLead.city && (
-              <div className="p-4 rounded-2xl bg-[#FAF6F0] border border-[#E5DAD0] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#1F1916] flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-[#8C7359]" />
-                    Localização Geográfica do Paciente:
-                  </span>
-                  <button
-                    onClick={() => {
-                      setActiveAdminTab('mapa');
-                      setSelectedLead(null);
-                    }}
-                    className="text-xs font-bold text-[#8C7359] hover:text-[#44342E] underline cursor-pointer"
-                  >
-                    Ver no Mapa de Leads →
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-[#8C7359] block">Bairro:</span>
-                    <span className="font-bold text-[#1F1916]">
-                      {selectedLead.neighborhood && selectedLead.neighborhood !== 'Não informada' 
-                        ? selectedLead.neighborhood 
-                        : (selectedLead.displayAddress?.split(' - ')[1]?.split(',')[0] || 'Não informada')}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[#8C7359] block">Cidade / UF:</span>
-                    <span className="font-bold text-[#1F1916]">
-                      {selectedLead.city && selectedLead.city !== 'Não informada' 
-                        ? `${selectedLead.city} - ${selectedLead.state || 'SP'}` 
-                        : (selectedLead.state ? `São Paulo - ${selectedLead.state}` : 'Não informada')}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[#8C7359] block">Coordenadas:</span>
-                    <span className="font-mono text-[11px] text-[#66534B]">
-                      {selectedLead.latitude != null && selectedLead.longitude != null 
-                        ? `${Number(selectedLead.latitude).toFixed(4)}, ${Number(selectedLead.longitude).toFixed(4)}` 
-                        : 'Não informada (sem GPS)'}
-                    </span>
-                  </div>
-                </div>
-                {selectedLead.displayAddress && (
-                  <div className="pt-2 border-t border-[#E5DAD0]/70 text-xs">
-                    <span className="text-[#8C7359] block font-medium">Endereço Identificado (GPS):</span>
-                    <span className="font-bold text-[#1F1916]">{selectedLead.displayAddress}</span>
-                  </div>
-                )}
               </div>
             )}
 
