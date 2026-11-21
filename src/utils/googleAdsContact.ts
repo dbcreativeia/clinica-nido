@@ -28,6 +28,14 @@ export function syncGoogleAdsConsent(){
  }catch{}
  return true;
 }
+// Intent only: the form is visible, before any personal data or saved lead exists.
+export function trackGoogleFormOpen(){
+ if(!syncGoogleAdsConsent())return;
+ try{
+  window.gtag?.('event','conversion',{send_to:ADS_ID+'/ZKJBCPeE-LwdEOmYrP0o',
+   page_location:NEUTRAL_URL,page_title:'Clínica Nidô',page_referrer:''});
+ }catch{}
+}
 // Called only after MySQL acknowledged the form. Opening WhatsApp is not a conversation.
 export function trackConfirmedGoogleContact(id:string){
  if(!id||confirmed.has(id)||!syncGoogleAdsConsent())return;

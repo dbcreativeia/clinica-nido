@@ -10,6 +10,7 @@ import { trackMetaEvent, captureMetaContext } from '../utils/metaConversions';
 import { getVisitorLocation, getSessionViewedTreatments, getSessionJourney, getVisitorId, getSessionId, hasAnalyticsConsent } from '../utils/internalAnalytics';
 
 import { persistContactLead } from '../utils/leadSubmission';
+import { trackGoogleFormOpen } from '../utils/googleAdsContact';
 
 interface ModalDetail {
   message: string;
@@ -31,7 +32,10 @@ export const LeadCaptureModal: React.FC = () => {
   // Measure intent once per visible opening, independently from form submission.
   // trackMetaEvent enforces marketing consent and shares the Pixel/CAPI event ID.
   useEffect(() => {
-    if (isOpen) void trackMetaEvent('WhatsAppFormOpen');
+    if (isOpen) {
+      trackGoogleFormOpen();
+      void trackMetaEvent('WhatsAppFormOpen');
+    }
   }, [isOpen]);
 
   // Pre-fill if previously stored

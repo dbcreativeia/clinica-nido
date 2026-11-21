@@ -14,6 +14,13 @@ A captura preserva o tipo original de GCLID/GBRAID/WBRAID. O feed atual é de GC
 
 A conversão secundária de formulário usa `AW-11000286313/GoyeCMrii5MaEOmYrP0o`, somente depois da confirmação de persistência do servidor, com `transaction_id` estável e URLs/título institucionais. Publicidade pode ser recusada sem impedir o formulário. Não há envio de dados de correspondência ao Google nem remarketing personalizado. Cliques/aberturas do WhatsApp não são tratados como conversa efetiva.
 
+## Funil de intenção — 21/11/2026
+
+- `NIDÔ | Abertura do formulário | Site (secundário)`, ação `7912424055`, usa `AW-11000286313/ZKJBCPeE-LwdEOmYrP0o` somente quando o modal de cadastro fica visível. Valor zero e contagem de uma conversão por clique; não incluir na meta personalizada de lances. Requer consentimento de publicidade válido e origem de produção; não envia nome, telefone, e-mail, tratamento ou URL sensível.
+- `NIDÔ | WhatsApp após cadastro | GA4 (primário)`, ação `7887222620`, permanece na meta personalizada da campanha, evento GA4 `whatsapp_click`. É encaminhamento após cadastro confirmado, não mensagem enviada.
+- `Formulário confirmado` permanece secundário para preservar seu histórico; não renomear nem reaproveitar seu código como abertura. Não somar as três ações como leads únicos.
+- Aberturas e encaminhamentos usam fontes/consentimentos diferentes (Ads direto e GA4); a razão entre os totais atribuídos do Ads é indicativa, não uma taxa de abandono de coorte validada.
+
 Publicação segue `docs/crm-deployment.md`. Aplicar a versão testada no GitHub, aguardar/verificar deploy da hospedagem e puxar a versão no AI Studio antes de novas edições.
 
 Validação: `node --test *.test.mjs *.test.ts`, `npm run lint`, `npm run build`, `node --check server.ts`; conferir 401 sem credencial e CSV sem dados pessoais com conexão autenticada. Não alterar status de contatos reais para testes. Confirmar uma importação real quando houver clique legítimo elegível.
