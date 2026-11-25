@@ -38,9 +38,12 @@ const MYSQL_CONFIG = {
 let dbPool: mysql.Pool | null = null;
 try {
   dbPool = mysql.createPool(MYSQL_CONFIG);
-  console.log('[MySQL Pool Initialized] Conectado ao banco nidoestetica_novosite');
+  (dbPool as any)?.pool?.on?.('error', (poolErr: any) => {
+    console.warn('[MySQL Pool Warning]', poolErr?.code || poolErr?.message || 'Pool connection error');
+  });
+  console.log('[MySQL Pool Initialized] Pool configurado para o banco nidoestetica_novosite');
 } catch (poolErr) {
-  console.error('[MySQL Pool Error]', poolErr);
+  console.warn('[MySQL Pool Warning]', poolErr);
 }
 
 const PIXEL_ID = process.env.META_PIXEL_ID || '1002877629496230';
@@ -603,15 +606,59 @@ async function startServer() {
     }catch(error){if(error instanceof Error && error.message==='Invalid privacy receipt')return res.status(400).json({success:false});return res.status(503).json({success:false});}
   });
 
-  async function initAnalyticsTable(): Promise<void> {
+  const MYSQL_RETRY_COOLDOWN_MS = 15000;
+  let lastDbInitAttemptAt = 0;
+  let lastAnalyticsInitAttemptAt = 0;
+
+  function isTransientMySqlError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const anyErr = err as { code?: string; errno?: number | string; message?: string };
+    const code = String(anyErr.code || '');
+    if (
+      [
+        'ECONNREFUSED',
+        'ETIMEDOUT',
+        'ECONNRESET',
+        'EHOSTUNREACH',
+        'ENETUNREACH',
+        'PROTOCOL_CONNECTION_LOST',
+        'EPIPE',
+        'ER_CON_COUNT_ERROR',
+      ].includes(code)
+    ) {
+      return true;
+    }
+    const msg = String(anyErr.message || '');
+    return /ECONNREFUSED|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|Connection lost|Too many connections/i.test(msg);
+  }
+
+  async function initAnalyticsTable(allowQuickRetry: boolean = false): Promise<void> {
     if (!dbPool) return;
-    try {
-      await initAnalyticsDatabase(dbPool);
-      isAnalyticsDbReady = true;
-      console.log('[MySQL Analytics Table Verified] Tabela nido_analytics_events pronta.');
-    } catch (err) {
-      console.error('[MySQL Analytics Init Table Error]', err);
-      isAnalyticsDbReady = false;
+    lastAnalyticsInitAttemptAt = Date.now();
+    const maxAttempts = allowQuickRetry ? 3 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const attemptStartedAt = Date.now();
+      try {
+        await initAnalyticsDatabase(dbPool);
+        isAnalyticsDbReady = true;
+        console.log('[MySQL Analytics Table Verified] Tabela nido_analytics_events pronta.');
+        return;
+      } catch (err) {
+        isAnalyticsDbReady = false;
+        const transient = isTransientMySqlError(err);
+        const fastFail = Date.now() - attemptStartedAt < 2000;
+        if (transient && fastFail && attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, attempt * 350));
+          continue;
+        }
+        if (transient) {
+          const code = (err as { code?: string; message?: string })?.code || (err as { message?: string })?.message || 'UNAVAILABLE';
+          console.warn(`[MySQL Analytics Init Pending] Banco temporariamente indisponível (${code}). Tentará reconectar automaticamente.`);
+        } else {
+          console.error('[MySQL Analytics Init Table Error]', err);
+        }
+        return;
+      }
     }
   }
 
@@ -675,94 +722,139 @@ async function startServer() {
     } catch {return res.status(503).json({ready:false,error:'Qualification queue unavailable'});}
   });
 
-  async function initDatabase(): Promise<void> {
+  async function initDatabase(allowQuickRetry: boolean = false): Promise<void> {
     if (!dbPool) return;
-    try {
-      await dbPool.query(`
-        CREATE TABLE IF NOT EXISTS nido_leads (
-          id VARCHAR(100) PRIMARY KEY,
-          name VARCHAR(255) NOT NULL,
-          phone VARCHAR(50) NOT NULL,
-          email VARCHAR(255),
-          service_interest VARCHAR(255),
-          cta_location VARCHAR(255),
-          message TEXT,
-          traffic_channel VARCHAR(100),
-          traffic_source VARCHAR(100),
-          traffic_medium VARCHAR(100),
-          traffic_campaign VARCHAR(255),
-          traffic_term VARCHAR(255),
-          traffic_content VARCHAR(255),
-          fbclid VARCHAR(255),
-          gclid VARCHAR(255),
-          referrer TEXT,
-          page_path VARCHAR(255),
-          client_ip VARCHAR(50),
-          city VARCHAR(100),
-          state VARCHAR(50),
-          neighborhood VARCHAR(100),
-          latitude DECIMAL(10, 6),
-          longitude DECIMAL(10, 6),
-          viewed_treatments JSON,
-          session_journey JSON,
-          procedure_cycles JSON,
-          status VARCHAR(50) DEFAULT 'novo',
-          notes TEXT,
-          meta_lead_sent BOOLEAN DEFAULT FALSE,
-          meta_lead_sent_at DATETIME,
-          kommo_lead_id VARCHAR(100),
-          kommo_status_id VARCHAR(100),
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-      `);
+    lastDbInitAttemptAt = Date.now();
+    const maxAttempts = allowQuickRetry ? 3 : 1;
+    let leadsInitTransientFailure = false;
 
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const attemptStartedAt = Date.now();
       try {
-        await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN session_journey JSON AFTER viewed_treatments;`);
-      } catch {}
-      try {
-        await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
-      } catch {}
+        await dbPool.query(`
+          CREATE TABLE IF NOT EXISTS nido_leads (
+            id VARCHAR(100) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            phone VARCHAR(50) NOT NULL,
+            email VARCHAR(255),
+            service_interest VARCHAR(255),
+            cta_location VARCHAR(255),
+            message TEXT,
+            traffic_channel VARCHAR(100),
+            traffic_source VARCHAR(100),
+            traffic_medium VARCHAR(100),
+            traffic_campaign VARCHAR(255),
+            traffic_term VARCHAR(255),
+            traffic_content VARCHAR(255),
+            fbclid VARCHAR(255),
+            gclid VARCHAR(255),
+            referrer TEXT,
+            page_path VARCHAR(255),
+            client_ip VARCHAR(50),
+            city VARCHAR(100),
+            state VARCHAR(50),
+            neighborhood VARCHAR(100),
+            latitude DECIMAL(10, 6),
+            longitude DECIMAL(10, 6),
+            viewed_treatments JSON,
+            session_journey JSON,
+            procedure_cycles JSON,
+            status VARCHAR(50) DEFAULT 'novo',
+            notes TEXT,
+            meta_lead_sent BOOLEAN DEFAULT FALSE,
+            meta_lead_sent_at DATETIME,
+            kommo_lead_id VARCHAR(100),
+            kommo_status_id VARCHAR(100),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
 
-      for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0', 'location_context JSON NULL', 'attribution_context JSON NULL', 'google_qualified_at VARCHAR(30) NULL', 'google_qualification_context JSON NULL']) {
-        try { await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN ${definition}`); }
-        catch (error: any) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+        try {
+          await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN session_journey JSON AFTER viewed_treatments;`);
+        } catch {}
+        try {
+          await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN procedure_cycles JSON AFTER session_journey;`);
+        } catch {}
+
+        for (const definition of ['deleted_at DATETIME NULL', 'kommo_updated_at BIGINT NOT NULL DEFAULT 0', 'location_context JSON NULL', 'attribution_context JSON NULL', 'google_qualified_at VARCHAR(30) NULL', 'google_qualification_context JSON NULL']) {
+          try { await dbPool.query(`ALTER TABLE nido_leads ADD COLUMN ${definition}`); }
+          catch (error: any) { if (error.code !== 'ER_DUP_FIELDNAME') throw error; }
+        }
+        isDbReady = true;
+        leadsInitTransientFailure = false;
+        await ensureMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox initialization pending.'));
+        console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
+        break;
+      } catch (err) {
+        isDbReady = false;
+        const transient = isTransientMySqlError(err);
+        const fastFail = Date.now() - attemptStartedAt < 2000;
+        if (transient && fastFail && attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, attempt * 350));
+          continue;
+        }
+        if (transient) {
+          leadsInitTransientFailure = true;
+          const code = (err as { code?: string; message?: string })?.code || (err as { message?: string })?.message || 'UNAVAILABLE';
+          console.warn(`[MySQL Init Leads Pending] Banco temporariamente indisponível (${code}). Usando fallback local até reconectar.`);
+        } else {
+          console.error('[MySQL Init Leads Table Error]', err);
+        }
+        break;
       }
-      isDbReady = true;
-      await ensureMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox initialization pending.'));
-      console.log('[MySQL Table Verified] Tabela nido_leads pronta.');
-    } catch (err) {
-      console.error('[MySQL Init Leads Table Error]', err);
-      isDbReady = false;
     }
 
-    await initAnalyticsTable().catch(console.error);
-    if(dbPool)try{await initConsentReceipts(dbPool);isPrivacyReady=true;}catch{isPrivacyReady=false;}
+    if (leadsInitTransientFailure) {
+      isAnalyticsDbReady = false;
+      isPrivacyReady = false;
+      lastAnalyticsInitAttemptAt = Date.now();
+      return;
+    }
+
+    await initAnalyticsTable(allowQuickRetry).catch(() => {});
+    if (dbPool) {
+      try {
+        await initConsentReceipts(dbPool);
+        isPrivacyReady = true;
+      } catch {
+        isPrivacyReady = false;
+      }
+    }
   }
 
-  // Trigger table check on boot and await
-  await initDatabase().catch(console.error);
+  // Trigger table check on boot and await (with quick retry for brief startup refusals)
+  await initDatabase(true).catch(() => {});
   void enrichExistingLeadsWithAddress().catch(() => {});
   const metaDeliveryTimer=setInterval(()=>{void processCrmMetaQueue().catch(()=>console.warn('[CRM Meta] Outbox retry pending.'));},30000);
   metaDeliveryTimer.unref();
   const googleDeliveryTimer=setInterval(()=>{void processCrmGoogleLedger().catch(()=>console.warn('[CRM Google] Qualification retry pending.'));},30000);
   googleDeliveryTimer.unref();
-  void processCrmGoogleLedger().catch(()=>{});
-  void processCrmMetaQueue().catch(()=>{});
   let databaseRetry: Promise<void> | null = null;
   let analyticsRetry: Promise<void> | null = null;
+  const dbRecoveryTimer = setInterval(() => {
+    if (!dbPool) return;
+    if (!isDbReady) {
+      if (!databaseRetry) databaseRetry = initDatabase(false).finally(() => { databaseRetry = null; });
+    } else if (!isAnalyticsDbReady) {
+      if (!analyticsRetry) analyticsRetry = initAnalyticsTable(false).finally(() => { analyticsRetry = null; });
+    }
+  }, 30000);
+  dbRecoveryTimer.unref();
+  void processCrmGoogleLedger().catch(()=>{});
+  void processCrmMetaQueue().catch(()=>{});
 
   app.use(['/api/leads', '/api/integrations/kommo'], async (_req, res, next) => {
-    if (!isDbReady) {
-      if (!databaseRetry) databaseRetry = initDatabase().finally(() => { databaseRetry = null; });
+    if (!isDbReady && Date.now() - lastDbInitAttemptAt >= MYSQL_RETRY_COOLDOWN_MS) {
+      if (!databaseRetry) databaseRetry = initDatabase(false).finally(() => { databaseRetry = null; });
       await databaseRetry.catch(() => {});
     }
     next();
   });
 
   app.use('/api/analytics', async (_req, res, next) => {
-    if (!isAnalyticsDbReady) {
-      if (!analyticsRetry) analyticsRetry = initAnalyticsTable().finally(() => { analyticsRetry = null; });
+    if (!isAnalyticsDbReady && Date.now() - lastAnalyticsInitAttemptAt >= MYSQL_RETRY_COOLDOWN_MS) {
+      if (!analyticsRetry) analyticsRetry = initAnalyticsTable(false).finally(() => { analyticsRetry = null; });
       await analyticsRetry.catch(() => {});
     }
     next();
@@ -1702,7 +1794,12 @@ async function startServer() {
         stats
       });
     } catch (err: unknown) {
-      console.error('[Analytics Stats Error]', err);
+      if (isTransientMySqlError(err)) {
+        isAnalyticsDbReady = false;
+        console.warn('[Analytics Stats Warning]', (err as { code?: string })?.code || 'MySQL unavailable');
+      } else {
+        console.error('[Analytics Stats Error]', err);
+      }
       return res.status(503).json({ success: false, error: 'Banco de dados de analytics indisponível' });
     }
   });
@@ -1719,7 +1816,12 @@ async function startServer() {
       }
       return res.json({ success: true, ...result });
     } catch (err: unknown) {
-      console.error('[Record Analytics Event Error]', err);
+      if (isTransientMySqlError(err)) {
+        isAnalyticsDbReady = false;
+        console.warn('[Record Analytics Event Warning]', (err as { code?: string })?.code || 'MySQL unavailable');
+      } else {
+        console.error('[Record Analytics Event Error]', err);
+      }
       return res.status(503).json({ success: false, error: 'Erro ao registrar evento de analytics' });
     }
   });
