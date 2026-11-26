@@ -1744,6 +1744,7 @@ async function startServer() {
     // Health check endpoint for verifying connectivity
     return res.json({
       status: 'active',
+      version: CRM_VERSION,
       integration: 'Kommo CRM Webhook',
       account: 'brendaniyama.kommo.com',
       supportedStages: [
