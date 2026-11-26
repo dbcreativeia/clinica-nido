@@ -33,6 +33,22 @@ test('updates linked lead by exact id and numeric status without status_name', a
   const f=fixture([{id:'a',kommoLeadId:'9',status:'novo'}],{'9':k(9)});
   await synchronizeKommo(f); assert.equal(f.rows.get('a').status,'agendado');
 });
+test('manual sync returns a lead awaiting its first response to Novo', async () => {
+  const f = fixture(
+    [{id: 'a', kommoLeadId: '9', status: 'em_contato', kommoUpdatedAt: 20}],
+    {'9': k(9, 114624159, 30)}
+  );
+  await synchronizeKommo(f);
+  assert.equal(f.rows.get('a').status, 'novo');
+});
+test('status webhook propagates Aguardando resposta as Novo', async () => {
+  const f = fixture(
+    [{id: 'a', kommoLeadId: '9', status: 'em_contato', kommoUpdatedAt: 20}],
+    {'9': k(9, 114624159, 30)}
+  );
+  await receiveKommoWebhook({...f, payload: {leads: {status: [{id: '9'}]}}});
+  assert.equal(f.rows.get('a').status, 'novo');
+});
 test('checks every linked id, including those outside the latest 50',async()=>{
   const leads=Array.from({length:61},(_,i)=>({id:String(i),kommoLeadId:String(i+100)}));
   const remote=Object.fromEntries(leads.map(l=>[l.kommoLeadId,k(Number(l.kommoLeadId))]));

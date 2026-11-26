@@ -1,7 +1,8 @@
 import {GOOGLE_QUALIFICATION_ASSIGNMENTS} from './crm-google.mjs';
-export const CRM_VERSION = 'nido-crm-sync-v3';
+export const CRM_VERSION = 'nido-crm-sync-v4';
 const ALLOWED = new Set([13625351,14680687]);
 const STATES = new Map([
+  [114624159,'novo'],
   [105149571,'novo'],[105149575,'em_contato'],[105149579,'em_contato'],[105149583,'em_contato'],
   [105149587,'agendado'],[105480591,'compareceu'],[105480595,'convertido'],
   ...[105480599,105480603,105480607,105480611,105480615,105480619].map(id=>[id,'em_contato']),
