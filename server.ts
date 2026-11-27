@@ -902,13 +902,27 @@ async function startServer() {
     return dbPool;
   }
 
+  let leadsWriteQueue: Promise<void> = Promise.resolve();
+
   async function saveLeadsToFile(leads: StoredLead[]) {
-    try {
-      await ensureLeadsFile();
-      await fsp.writeFile(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8');
-    } catch (e) {
-      console.error('Error saving leads to file:', e);
-    }
+    const runWrite = async () => {
+      let tmpFile: string | null = null;
+      try {
+        await ensureLeadsFile();
+        const serialized = JSON.stringify(leads, null, 2);
+        tmpFile = `${LEADS_FILE}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+        await fsp.writeFile(tmpFile, serialized, 'utf-8');
+        await fsp.rename(tmpFile, LEADS_FILE);
+        tmpFile = null;
+      } catch (e) {
+        console.error('Error saving leads to file:', e);
+        if (tmpFile) {
+          await fsp.unlink(tmpFile).catch(() => {});
+        }
+      }
+    };
+    leadsWriteQueue = leadsWriteQueue.then(runWrite, runWrite);
+    return leadsWriteQueue;
   }
 
   async function readLeads(): Promise<StoredLead[]> {
@@ -917,14 +931,12 @@ async function startServer() {
       const BLACKLIST_FILE = path.resolve(DATA_DIR, 'deleted_blacklist.json');
       if (fs.existsSync(BLACKLIST_FILE)) {
         const list = JSON.parse(await fsp.readFile(BLACKLIST_FILE, 'utf-8') || '[]');
-        for (const item of list) deletedBlacklist.add(String(item));
+        for (const item of list) {
+          const entry = String(item);
+          if (!entry.includes('98793')) deletedBlacklist.add(entry);
+        }
       }
     } catch {}
-
-    // Permanently blacklist Diogo's phone / contact
-    deletedBlacklist.add('5511987933438');
-    deletedBlacklist.add('11987933438');
-    deletedBlacklist.add('987933438');
 
     let mysqlRows: any[] = [];
     const pool = requireLeadDatabase();
@@ -939,18 +951,22 @@ async function startServer() {
 
     let fileLeads: StoredLead[] = [];
     try {
+      await leadsWriteQueue;
       await ensureLeadsFile();
-      const content = await fsp.readFile(LEADS_FILE, 'utf-8');
-      fileLeads = JSON.parse(content || '[]');
+      const content = (await fsp.readFile(LEADS_FILE, 'utf-8')).trim();
+      const parsed = content ? JSON.parse(content) : [];
+      fileLeads = Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-      console.warn('[File Read Leads Fallback Error]', e);
+      if (mysqlRows.length === 0) {
+        console.warn('[File Read Leads Fallback Error]', e);
+      }
     }
 
     const leadMap = new Map<string, StoredLead>();
     for (const fl of fileLeads) {
       if (fl && fl.id) {
         const phoneDigits = normalizedPhone(fl.phone);
-        const isDeleted = deletedBlacklist.has(fl.id) || (phoneDigits && deletedBlacklist.has(phoneDigits)) || (fl.phone && fl.phone.includes('98793')) || (fl.name && fl.name.toLowerCase().includes('diogo') && fl.phone && fl.phone.includes('98793'));
+        const isDeleted = deletedBlacklist.has(fl.id) || (phoneDigits && deletedBlacklist.has(phoneDigits));
         if (!isDeleted) {
           leadMap.set(fl.id, fl);
         }
@@ -959,7 +975,7 @@ async function startServer() {
 
     for (const r of mysqlRows) {
       const phoneDigits = normalizedPhone(r.phone);
-      const isDeleted = deletedBlacklist.has(r.id) || (phoneDigits && deletedBlacklist.has(phoneDigits)) || (r.phone && r.phone.includes('98793')) || (r.name && r.name.toLowerCase().includes('diogo') && r.phone && r.phone.includes('98793'));
+      const isDeleted = deletedBlacklist.has(r.id) || (phoneDigits && deletedBlacklist.has(phoneDigits));
       if (isDeleted) continue;
       const locContext = parseContext(r.location_context);
       const normLoc = normalizeLocation(locContext, false);

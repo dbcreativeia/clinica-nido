@@ -79,11 +79,11 @@
     "status": "novo",
     "notes": "",
     "metaLeadSent": false,
-    "kommoLeadId": "11725042",
-    "kommoStatusId": null,
-    "kommoUpdatedAt": 0,
+    "kommoLeadId": "11725044",
+    "kommoStatusId": "105149571",
+    "kommoUpdatedAt": 1795639107,
     "createdAt": "2026-11-25T17:07:05.000Z",
-    "updatedAt": "2026-11-25T17:08:12.000Z"
+    "updatedAt": "2026-11-26T18:29:38.000Z"
   },
   {
     "id": "lead_1795620442059_r8qt50",
@@ -157,10 +157,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11717782",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795630644,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-25T12:27:22.000Z",
-    "updatedAt": "2026-11-25T15:38:34.000Z"
+    "updatedAt": "2026-11-26T18:29:39.000Z"
   },
   {
     "id": "lead_1795618615995_msckq5",
@@ -242,10 +242,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11716482",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632817,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-25T11:56:55.000Z",
-    "updatedAt": "2026-11-25T15:59:34.000Z"
+    "updatedAt": "2026-11-26T18:29:39.000Z"
   },
   {
     "id": "lead_1795618604835_o0crt3",
@@ -321,14 +321,14 @@
         "notes": "Primeiro contato registrado"
       }
     ],
-    "status": "novo",
+    "status": "em_contato",
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11716478",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632013,
+    "kommoStatusId": "105149583",
+    "kommoUpdatedAt": 1795728409,
     "createdAt": "2026-11-25T11:56:44.000Z",
-    "updatedAt": "2026-11-25T15:57:19.000Z"
+    "updatedAt": "2026-11-26T18:29:39.000Z"
   },
   {
     "id": "lead_1795618519946_yighw2",
@@ -408,10 +408,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11716462",
-    "kommoStatusId": "105149571",
-    "kommoUpdatedAt": 1795618583,
+    "kommoStatusId": "143",
+    "kommoUpdatedAt": 1795726580,
     "createdAt": "2026-11-25T11:55:19.000Z",
-    "updatedAt": "2026-11-25T15:57:19.000Z"
+    "updatedAt": "2026-11-26T18:29:39.000Z"
   },
   {
     "id": "lead_1795578759989_ldfewm",
@@ -488,7 +488,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1795632937,
     "createdAt": "2026-11-25T00:52:39.000Z",
-    "updatedAt": "2026-11-25T15:55:38.000Z"
+    "updatedAt": "2026-11-26T18:29:39.000Z"
   },
   {
     "id": "lead_1795573504126_y6ph1u",
@@ -570,10 +570,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11705746",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632554,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-24T23:25:04.000Z",
-    "updatedAt": "2026-11-25T15:57:19.000Z"
+    "updatedAt": "2026-11-26T18:29:40.000Z"
   },
   {
     "id": "lead_1795567768145_g4g3bc",
@@ -653,10 +653,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11704644",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795619013,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726829,
     "createdAt": "2026-11-24T21:49:28.000Z",
-    "updatedAt": "2026-11-25T15:01:33.000Z"
+    "updatedAt": "2026-11-26T18:29:40.000Z"
   },
   {
     "id": "lead_1795555861889_yj2i9e",
@@ -732,10 +732,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11701682",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795632946,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726855,
     "createdAt": "2026-11-24T18:31:01.000Z",
-    "updatedAt": "2026-11-25T15:55:47.000Z"
+    "updatedAt": "2026-11-26T18:29:40.000Z"
   },
   {
     "id": "lead_1795549114571_slqtny",
@@ -815,10 +815,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11699580",
-    "kommoStatusId": "105149571",
-    "kommoUpdatedAt": 1795549226,
+    "kommoStatusId": "143",
+    "kommoUpdatedAt": 1795726585,
     "createdAt": "2026-11-24T16:38:34.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:40.000Z"
   },
   {
     "id": "lead_1795546954077_3j6b96",
@@ -894,10 +894,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11698768",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795618621,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726588,
     "createdAt": "2026-11-24T16:02:34.000Z",
-    "updatedAt": "2026-11-25T15:01:35.000Z"
+    "updatedAt": "2026-11-26T18:29:40.000Z"
   },
   {
     "id": "lead_1795545297045_lerlq3",
@@ -973,10 +973,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11697992",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795554727,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726591,
     "createdAt": "2026-11-24T15:34:57.000Z",
-    "updatedAt": "2026-11-25T15:01:37.000Z"
+    "updatedAt": "2026-11-26T18:29:41.000Z"
   },
   {
     "id": "lead_1795543962986_ahgcrc",
@@ -1058,10 +1058,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11696512",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632561,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-24T15:12:42.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:41.000Z"
   },
   {
     "id": "lead_1795539345524_k4fci6",
@@ -1137,10 +1137,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11694716",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795542098,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726595,
     "createdAt": "2026-11-24T13:55:45.000Z",
-    "updatedAt": "2026-11-25T15:01:38.000Z"
+    "updatedAt": "2026-11-26T18:29:41.000Z"
   },
   {
     "id": "lead_1795526109084_uum5m9",
@@ -1214,10 +1214,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11689434",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795526325,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-24T10:15:09.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:41.000Z"
   },
   {
     "id": "lead_1795517574686_mjeo6m",
@@ -1299,10 +1299,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11686706",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632867,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-24T07:52:54.000Z",
-    "updatedAt": "2026-11-25T15:59:35.000Z"
+    "updatedAt": "2026-11-26T18:29:42.000Z"
   },
   {
     "id": "lead_1795511911912_hc3gs0",
@@ -1384,10 +1384,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11685884",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632874,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-24T06:18:31.000Z",
-    "updatedAt": "2026-11-25T15:59:35.000Z"
+    "updatedAt": "2026-11-26T18:29:42.000Z"
   },
   {
     "id": "lead_1795492388037_hakdmn",
@@ -1467,10 +1467,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11684598",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632879,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-24T00:53:08.000Z",
-    "updatedAt": "2026-11-25T15:59:36.000Z"
+    "updatedAt": "2026-11-26T18:29:42.000Z"
   },
   {
     "id": "lead_1795475681187_lmurqw",
@@ -1544,10 +1544,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11680438",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632568,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-23T20:14:41.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:42.000Z"
   },
   {
     "id": "lead_1795469859988_0j3w9w",
@@ -1623,10 +1623,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11678396",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632574,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-23T18:37:39.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:43.000Z"
   },
   {
     "id": "lead_1795467716087_cmdorv",
@@ -1702,10 +1702,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11677640",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632580,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-23T18:01:56.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:43.000Z"
   },
   {
     "id": "lead_1795467536718_vsva4t",
@@ -1779,10 +1779,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11677570",
-    "kommoStatusId": "105480619",
-    "kommoUpdatedAt": 1795612265,
+    "kommoStatusId": "143",
+    "kommoUpdatedAt": 1795726598,
     "createdAt": "2026-11-23T17:58:56.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:43.000Z"
   },
   {
     "id": "lead_1795461721604_aqdc7x",
@@ -1868,10 +1868,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11675610",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795466166,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726602,
     "createdAt": "2026-11-23T16:22:01.000Z",
-    "updatedAt": "2026-11-25T15:01:43.000Z"
+    "updatedAt": "2026-11-26T18:29:43.000Z"
   },
   {
     "id": "lead_1795459316449_l2o2bg",
@@ -1951,10 +1951,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11674684",
-    "kommoStatusId": "105149571",
-    "kommoUpdatedAt": 1795461420,
+    "kommoStatusId": "143",
+    "kommoUpdatedAt": 1795726605,
     "createdAt": "2026-11-23T15:41:56.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:43.000Z"
   },
   {
     "id": "lead_1795453592645_legqm3",
@@ -2042,7 +2042,7 @@
     "kommoStatusId": "105480619",
     "kommoUpdatedAt": 1795457687,
     "createdAt": "2026-11-23T14:06:32.000Z",
-    "updatedAt": "2026-11-25T15:01:43.000Z"
+    "updatedAt": "2026-11-26T18:29:44.000Z"
   },
   {
     "id": "lead_1795453052837_srvvv2",
@@ -2116,10 +2116,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11669894",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632586,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-23T13:57:32.000Z",
-    "updatedAt": "2026-11-25T15:57:20.000Z"
+    "updatedAt": "2026-11-26T18:29:44.000Z"
   },
   {
     "id": "lead_1795447451592_b9mseh",
@@ -2196,7 +2196,7 @@
     "kommoStatusId": "142",
     "kommoUpdatedAt": 1795544436,
     "createdAt": "2026-11-23T12:24:11.000Z",
-    "updatedAt": "2026-11-25T15:01:44.000Z"
+    "updatedAt": "2026-11-26T18:29:44.000Z"
   },
   {
     "id": "lead_1795425461717_z23ahi",
@@ -2612,7 +2612,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1795550333,
     "createdAt": "2026-11-22T20:56:00.000Z",
-    "updatedAt": "2026-11-25T15:01:48.000Z"
+    "updatedAt": "2026-11-26T18:29:47.000Z"
   },
   {
     "id": "lead_1795390302558_7ef1zs",
@@ -2692,10 +2692,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11656356",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795466087,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726608,
     "createdAt": "2026-11-22T20:31:42.000Z",
-    "updatedAt": "2026-11-25T15:01:50.000Z"
+    "updatedAt": "2026-11-26T18:29:47.000Z"
   },
   {
     "id": "lead_1795373813213_tqor73",
@@ -2775,10 +2775,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11652768",
-    "kommoStatusId": "105149571",
-    "kommoUpdatedAt": 1795461582,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726611,
     "createdAt": "2026-11-22T15:56:53.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:29:48.000Z"
   },
   {
     "id": "lead_1795368431579_7pcwqs",
@@ -2854,10 +2854,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11651556",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632890,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-22T14:27:11.000Z",
-    "updatedAt": "2026-11-25T15:59:36.000Z"
+    "updatedAt": "2026-11-26T18:29:48.000Z"
   },
   {
     "id": "lead_1795361326402_bqx6fa",
@@ -2933,10 +2933,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11649054",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795463105,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726614,
     "createdAt": "2026-11-22T12:28:46.000Z",
-    "updatedAt": "2026-11-25T15:01:51.000Z"
+    "updatedAt": "2026-11-26T18:29:48.000Z"
   },
   {
     "id": "lead_1795345982122_zry7pp",
@@ -3101,10 +3101,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11644470",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795462069,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726617,
     "createdAt": "2026-11-21T23:51:34.000Z",
-    "updatedAt": "2026-11-25T15:01:52.000Z"
+    "updatedAt": "2026-11-26T18:29:49.000Z"
   },
   {
     "id": "lead_1795303459336_2d5n5u",
@@ -3180,10 +3180,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11641992",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632903,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-21T20:24:19.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:29:49.000Z"
   },
   {
     "id": "lead_1795267861168_nt4n59",
@@ -3263,10 +3263,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11626496",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632896,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-21T10:31:01.000Z",
-    "updatedAt": "2026-11-25T15:59:36.000Z"
+    "updatedAt": "2026-11-26T18:29:49.000Z"
   },
   {
     "id": "lead_1795260369282_4ls5bo",
@@ -3346,10 +3346,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11624726",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795632912,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-21T08:26:09.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:29:50.000Z"
   },
   {
     "id": "lead_1795260189240_r748mi",
@@ -3425,10 +3425,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11624692",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795544423,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726620,
     "createdAt": "2026-11-21T08:23:09.000Z",
-    "updatedAt": "2026-11-25T15:01:54.000Z"
+    "updatedAt": "2026-11-26T18:29:50.000Z"
   },
   {
     "id": "lead_1795250578448_3rlifp",
@@ -3822,10 +3822,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11615196",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1795614424,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726626,
     "createdAt": "2026-11-20T19:11:16.000Z",
-    "updatedAt": "2026-11-25T15:02:05.000Z"
+    "updatedAt": "2026-11-26T18:29:52.000Z"
   },
   {
     "id": "lead_1795192381978_cmlwh5",
@@ -3908,7 +3908,7 @@
     "kommoStatusId": "105480595",
     "kommoUpdatedAt": 1795529794,
     "createdAt": "2026-11-20T13:33:01.000Z",
-    "updatedAt": "2026-11-25T15:02:05.000Z"
+    "updatedAt": "2026-11-26T18:29:53.000Z"
   },
   {
     "id": "lead_1795184069672_iv74ka",
@@ -3982,10 +3982,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11606280",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795633007,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-20T11:14:29.000Z",
-    "updatedAt": "2026-11-25T15:59:37.000Z"
+    "updatedAt": "2026-11-26T18:29:53.000Z"
   },
   {
     "id": "lead_1795177436434_2ae73a",
@@ -4267,10 +4267,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11602698",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795633013,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-20T03:25:52.000Z",
-    "updatedAt": "2026-11-25T15:59:37.000Z"
+    "updatedAt": "2026-11-26T18:29:55.000Z"
   },
   {
     "id": "lead_1795133572335_5x9ck5",
@@ -4429,10 +4429,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11599090",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795633019,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727576,
     "createdAt": "2026-11-19T20:29:37.000Z",
-    "updatedAt": "2026-11-25T15:59:38.000Z"
+    "updatedAt": "2026-11-26T18:29:56.000Z"
   },
   {
     "id": "lead_1795130942007_6pe9bd",
@@ -4514,10 +4514,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11599078",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795633025,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-19T20:29:02.000Z",
-    "updatedAt": "2026-11-25T15:59:38.000Z"
+    "updatedAt": "2026-11-26T18:29:56.000Z"
   },
   {
     "id": "lead_1795102498324_gqhc95",
@@ -4597,10 +4597,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11588864",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795439055,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-19T12:34:58.000Z",
-    "updatedAt": "2026-11-25T15:59:39.000Z"
+    "updatedAt": "2026-11-26T18:29:56.000Z"
   },
   {
     "id": "lead_1795097484464_mz4gs4",
@@ -4753,10 +4753,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11579976",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795633069,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-18T23:50:13.000Z",
-    "updatedAt": "2026-11-25T15:59:39.000Z"
+    "updatedAt": "2026-11-26T18:29:57.000Z"
   },
   {
     "id": "lead_1795051214584_hlnl8b",
@@ -4832,17 +4832,17 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11578778",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102012,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-18T22:20:14.000Z",
-    "updatedAt": "2026-11-25T15:59:40.000Z"
+    "updatedAt": "2026-11-26T18:29:57.000Z"
   },
   {
     "id": "lead_1795047780864_b4jn30",
     "name": "Francine Miranda",
     "phone": "(11) 97964-4332",
     "email": "mell_2006fmc@yahoo.com.br",
-    "serviceInterest": "Harmonização Facial Personalizada",
+    "serviceInterest": "Harmonização Facial Personalizada (Recorrente: 2º ciclo)",
     "ctaLocation": "Hero Tratamento",
     "message": "Oi meu nome é Francine Miranda, vim pelo site da Nidô e gostaria de informações sobre Harmonização Facial Personalizada. Você pode me orientar?",
     "trafficChannel": "Meta Ads",
@@ -4861,10 +4861,10 @@
     "neighborhood": "Vila Nova Manchester",
     "geoConsent": true,
     "locationSource": "browser_gps",
-    "locationCapturedAt": "2026-11-19T00:22:21.596Z",
-    "latitude": -23.544228912353475,
-    "longitude": -46.538657629220516,
-    "accuracy": 28.695014,
+    "locationCapturedAt": "2026-11-27T02:58:02.638Z",
+    "latitude": -23.544167486589416,
+    "longitude": -46.53854090027498,
+    "accuracy": 19.92178699003692,
     "road": "Rua Queriri",
     "houseNumber": "",
     "displayAddress": "Rua Queriri - Vila Nova Manchester, São Paulo - SP",
@@ -4872,28 +4872,28 @@
       "campaignId": "120250491574680585",
       "adSet": "quente_site",
       "adSetId": "120250491574950585",
-      "adName": "paciente-modelo",
-      "adId": "120250491670800585",
-      "placement": "Instagram_Feed",
+      "adName": "emagreceu-rosto-derreteu",
+      "adId": "120250491574900585",
+      "placement": "Instagram_Reels",
       "keyword": "",
-      "campaign": "novembro-2026_whats-no-site",
+      "campaign": "novembro-2026_leads-no-site — Cópia",
       "source": "ig",
       "medium": "paid_social",
-      "content": "paciente-modelo",
+      "content": "emagreceu-rosto-derreteu",
       "term": "quente_site",
       "visitorId": "",
       "sessionId": ""
     },
     "viewedTreatments": [],
     "sessionJourney": {
-      "startedAt": "2026-11-19T00:23:00.203Z",
+      "startedAt": "2026-11-27T02:58:31.310Z",
       "totalDurationSeconds": 0,
       "totalPageViews": 1,
       "steps": [
         {
           "path": "/",
           "title": "Início",
-          "enteredAt": 1795047780203,
+          "enteredAt": 1795748311310,
           "durationSeconds": 0
         }
       ],
@@ -4901,6 +4901,15 @@
       "browser": "Instagram In-App Browser"
     },
     "procedureCycles": [
+      {
+        "cycleId": "cycle_1795748311812",
+        "procedureName": "Harmonização Facial Personalizada",
+        "date": "2026-11-27T02:58:31.812Z",
+        "status": "novo",
+        "trafficSource": "ig",
+        "trafficCampaign": "novembro-2026_leads-no-site — Cópia",
+        "notes": "Novo contato via Hero Tratamento: \"Oi meu nome é Francine, vim pelo site da Nidô e gostaria de informações sobre Harmonização Facial Personalizada. Você pode me orientar?\""
+      },
       {
         "cycleId": "cycle_1_1795047780864",
         "procedureName": "Harmonização Facial Personalizada",
@@ -4915,10 +4924,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11577990",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102020,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-18T21:23:00.000Z",
-    "updatedAt": "2026-11-25T15:59:40.000Z"
+    "updatedAt": "2026-11-26T23:58:31.000Z"
   },
   {
     "id": "lead_1795045617364_svrab8",
@@ -5098,10 +5107,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11576018",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275853,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-18T19:27:09.000Z",
-    "updatedAt": "2026-11-25T15:59:40.000Z"
+    "updatedAt": "2026-11-26T18:29:58.000Z"
   },
   {
     "id": "lead_1795033615478_16a6g8",
@@ -5177,10 +5186,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11571956",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275858,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-18T17:26:55.000Z",
-    "updatedAt": "2026-11-25T15:59:41.000Z"
+    "updatedAt": "2026-11-26T18:29:58.000Z"
   },
   {
     "id": "lead_1795032421956_4r58vv",
@@ -5342,7 +5351,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1795030417,
     "createdAt": "2026-11-18T13:00:27.000Z",
-    "updatedAt": "2026-11-25T15:02:14.000Z"
+    "updatedAt": "2026-11-26T18:29:59.000Z"
   },
   {
     "id": "lead_1795008896226_n3teaf",
@@ -5507,10 +5516,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11553872",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102047,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-17T21:19:53.000Z",
-    "updatedAt": "2026-11-25T15:59:41.000Z"
+    "updatedAt": "2026-11-26T18:29:59.000Z"
   },
   {
     "id": "lead_1794959950074_4if50g",
@@ -5586,10 +5595,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11553576",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275863,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-17T20:59:10.000Z",
-    "updatedAt": "2026-11-25T15:59:42.000Z"
+    "updatedAt": "2026-11-26T18:30:00.000Z"
   },
   {
     "id": "lead_1794955941951_w9u77t",
@@ -5665,10 +5674,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11552582",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275866,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-17T19:52:21.000Z",
-    "updatedAt": "2026-11-25T15:59:42.000Z"
+    "updatedAt": "2026-11-26T18:30:00.000Z"
   },
   {
     "id": "lead_1794952878123_7z4lla",
@@ -5747,7 +5756,7 @@
     "kommoStatusId": "105480619",
     "kommoUpdatedAt": 1795015530,
     "createdAt": "2026-11-17T19:01:18.000Z",
-    "updatedAt": "2026-11-25T15:02:15.000Z"
+    "updatedAt": "2026-11-26T18:30:00.000Z"
   },
   {
     "id": "lead_1794948604982_9cvw67",
@@ -5847,7 +5856,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1794996444,
     "createdAt": "2026-11-17T17:50:04.000Z",
-    "updatedAt": "2026-11-25T15:02:16.000Z"
+    "updatedAt": "2026-11-26T18:30:00.000Z"
   },
   {
     "id": "lead_1794947853367_1l711c",
@@ -5923,10 +5932,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11543974",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275944,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-17T17:37:33.000Z",
-    "updatedAt": "2026-11-25T15:59:42.000Z"
+    "updatedAt": "2026-11-26T18:30:01.000Z"
   },
   {
     "id": "lead_1794947122408_wgs1uu",
@@ -6003,7 +6012,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1795096390,
     "createdAt": "2026-11-17T17:25:22.000Z",
-    "updatedAt": "2026-11-25T15:02:16.000Z"
+    "updatedAt": "2026-11-26T18:30:01.000Z"
   },
   {
     "id": "lead_1794946126333_rzn239",
@@ -6190,7 +6199,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1794937876,
     "createdAt": "2026-11-17T13:41:21.000Z",
-    "updatedAt": "2026-11-25T15:02:17.000Z"
+    "updatedAt": "2026-11-26T18:30:03.000Z"
   },
   {
     "id": "lead_1794931454381_1dun81",
@@ -6267,7 +6276,7 @@
     "kommoStatusId": "143",
     "kommoUpdatedAt": 1795633138,
     "createdAt": "2026-11-17T13:04:14.000Z",
-    "updatedAt": "2026-11-25T15:58:59.000Z"
+    "updatedAt": "2026-11-26T18:30:03.000Z"
   },
   {
     "id": "lead_1794927017818_2lq8wz",
@@ -6429,7 +6438,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1794934946,
     "createdAt": "2026-11-17T11:31:16.000Z",
-    "updatedAt": "2026-11-25T15:02:18.000Z"
+    "updatedAt": "2026-11-26T18:30:04.000Z"
   },
   {
     "id": "lead_1794914084326_74is4m",
@@ -6505,10 +6514,95 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11529784",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275875,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-17T08:14:44.000Z",
-    "updatedAt": "2026-11-25T15:59:43.000Z"
+    "updatedAt": "2026-11-26T18:30:05.000Z"
+  },
+  {
+    "id": "lead_1794912615383_9w3haf",
+    "name": "Neide",
+    "phone": "(11) 98793-0542",
+    "email": "neide.kewin@gmail.com",
+    "serviceInterest": "Harmonização Facial Personalizada",
+    "ctaLocation": "Hero Tratamento",
+    "message": "Oi meu nome é Neide, vim pelo site da Nidô e gostaria de informações sobre Harmonização Facial Personalizada. Você pode me orientar?",
+    "trafficChannel": "Meta Ads",
+    "trafficSource": "ig",
+    "trafficMedium": "paid_social",
+    "trafficCampaign": "novembro-2026_whats-no-site",
+    "trafficTerm": "frio_ios_aberto_28-54",
+    "trafficContent": "paciente-modelo",
+    "fbclid": "PAZXh0bgNhZW0BMABwZG9mAmZkaWQWUSa7eemhdz9c-ffzaqfsWs2Ipwn2QmFkaWQBqzcyfH91uXNydGMGYXBwX2lkDzEyNDAyNDU3NDI4NzQxNAABp0RbNVXTXmiWGNrWsXm6SNHqiEBBJrrNIGjGC096Nw5bZ34M4E-LbeNEbLgP_aem_ylTBaSEOi2emjG1ZmE9sPA",
+    "gclid": "",
+    "referrer": "https://instagram.com/",
+    "pagePath": "/tratamentos/harmonizacao-facial",
+    "clientIp": "187.90.212.67",
+    "city": "São Paulo",
+    "state": "SP",
+    "neighborhood": "Cidade Jardim",
+    "geoConsent": true,
+    "locationSource": "browser_gps",
+    "locationCapturedAt": "2026-11-17T10:49:51.335Z",
+    "latitude": -23.572845144812216,
+    "longitude": -46.70240277182627,
+    "accuracy": 17.43795167891848,
+    "road": "Rua Pero Leão",
+    "houseNumber": "",
+    "displayAddress": "Rua Pero Leão - Cidade Jardim, São Paulo - SP",
+    "attribution": {
+      "campaignId": "120250491574680585",
+      "adSet": "frio_ios_aberto_28-54",
+      "adSetId": "120250491574710585",
+      "adName": "paciente-modelo",
+      "adId": "120250491774610585",
+      "placement": "Instagram_Reels",
+      "keyword": "",
+      "campaign": "novembro-2026_whats-no-site",
+      "source": "ig",
+      "medium": "paid_social",
+      "content": "paciente-modelo",
+      "term": "frio_ios_aberto_28-54",
+      "visitorId": "v_1794912593439_65fd3w",
+      "sessionId": "s_1794912593436_qmp7jq"
+    },
+    "viewedTreatments": [
+      "Harmonização Facial Personalizada"
+    ],
+    "sessionJourney": {
+      "startedAt": "2026-11-17T10:49:53.440Z",
+      "totalDurationSeconds": 21,
+      "totalPageViews": 1,
+      "steps": [
+        {
+          "path": "/tratamentos/harmonizacao-facial",
+          "title": "Harmonização Facial Personalizada em São Paulo | Clínica Nidô",
+          "enteredAt": 1794912593440,
+          "durationSeconds": 21
+        }
+      ],
+      "deviceType": "Mobile",
+      "browser": "Instagram In-App Browser"
+    },
+    "procedureCycles": [
+      {
+        "cycleId": "cycle_1_1794912615383",
+        "procedureName": "Harmonização Facial Personalizada",
+        "date": "2026-11-17T10:50:15.383Z",
+        "status": "novo",
+        "trafficSource": "ig",
+        "trafficCampaign": "novembro-2026_whats-no-site",
+        "notes": "Primeiro contato registrado"
+      }
+    ],
+    "status": "novo",
+    "notes": "",
+    "metaLeadSent": false,
+    "kommoLeadId": "11529470",
+    "kommoStatusId": null,
+    "kommoUpdatedAt": 0,
+    "createdAt": "2026-11-17T07:50:15.000Z",
+    "updatedAt": "2026-11-17T07:50:16.000Z"
   },
   {
     "id": "lead_1794911199191_n2xi24",
@@ -6590,10 +6684,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11529224",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275871,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-17T07:26:39.000Z",
-    "updatedAt": "2026-11-25T15:59:43.000Z"
+    "updatedAt": "2026-11-26T18:30:06.000Z"
   },
   {
     "id": "lead_1794905553147_8i2055",
@@ -6755,7 +6849,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1794927109,
     "createdAt": "2026-11-16T23:56:26.000Z",
-    "updatedAt": "2026-11-25T15:02:20.000Z"
+    "updatedAt": "2026-11-26T18:30:07.000Z"
   },
   {
     "id": "lead_1794880891640_653fri",
@@ -6829,10 +6923,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11526190",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275886,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-16T23:01:31.000Z",
-    "updatedAt": "2026-11-25T15:59:44.000Z"
+    "updatedAt": "2026-11-26T18:30:07.000Z"
   },
   {
     "id": "lead_1794879759590_vlv65l",
@@ -6911,7 +7005,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1795015547,
     "createdAt": "2026-11-16T22:42:39.000Z",
-    "updatedAt": "2026-11-25T15:02:20.000Z"
+    "updatedAt": "2026-11-26T18:30:08.000Z"
   },
   {
     "id": "lead_1794879173816_4wzt8o",
@@ -7070,10 +7164,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11525320",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275891,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-16T22:08:19.000Z",
-    "updatedAt": "2026-11-25T15:59:44.000Z"
+    "updatedAt": "2026-11-26T18:30:09.000Z"
   },
   {
     "id": "lead_1794862507790_z7ffez",
@@ -7222,7 +7316,7 @@
     "kommoStatusId": "105149575",
     "kommoUpdatedAt": 1795101621,
     "createdAt": "2026-11-16T17:55:07.000Z",
-    "updatedAt": "2026-11-25T15:02:21.000Z"
+    "updatedAt": "2026-11-26T18:30:09.000Z"
   },
   {
     "id": "lead_1794861238047_te09sb",
@@ -7302,10 +7396,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11520980",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275895,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-16T17:33:58.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:30:10.000Z"
   },
   {
     "id": "lead_1794853120374_spb248",
@@ -7381,10 +7475,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11516614",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102074,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-16T15:18:40.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:30:11.000Z"
   },
   {
     "id": "lead_1794851848419_aayvsc",
@@ -7460,10 +7554,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11516134",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102095,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-16T14:57:28.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:30:11.000Z"
   },
   {
     "id": "lead_1794851415363_0wxzg0",
@@ -7546,7 +7640,7 @@
     "kommoStatusId": "105149575",
     "kommoUpdatedAt": 1794945388,
     "createdAt": "2026-11-16T14:50:15.000Z",
-    "updatedAt": "2026-11-25T15:02:23.000Z"
+    "updatedAt": "2026-11-26T18:30:11.000Z"
   },
   {
     "id": "lead_1794848116367_wkq4e0",
@@ -7702,7 +7796,7 @@
     "kommoStatusId": "105149583",
     "kommoUpdatedAt": 1794870087,
     "createdAt": "2026-11-16T11:06:03.000Z",
-    "updatedAt": "2026-11-25T15:02:24.000Z"
+    "updatedAt": "2026-11-26T18:30:13.000Z"
   },
   {
     "id": "lead_1794835335722_mfqum3",
@@ -7784,10 +7878,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11509346",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102104,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727579,
     "createdAt": "2026-11-16T10:22:15.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:30:13.000Z"
   },
   {
     "id": "lead_1794828963824_870ipm",
@@ -7864,7 +7958,7 @@
     "kommoStatusId": "105149575",
     "kommoUpdatedAt": 1795101627,
     "createdAt": "2026-11-16T08:36:03.000Z",
-    "updatedAt": "2026-11-25T15:02:24.000Z"
+    "updatedAt": "2026-11-26T18:30:14.000Z"
   },
   {
     "id": "lead_1794820143692_6inm3y",
@@ -7940,10 +8034,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11506050",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102121,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-16T06:09:03.000Z",
-    "updatedAt": "2026-11-25T15:57:21.000Z"
+    "updatedAt": "2026-11-26T18:30:14.000Z"
   },
   {
     "id": "lead_1794807311963_g99135",
@@ -8109,7 +8203,7 @@
     "kommoStatusId": "105149575",
     "kommoUpdatedAt": 1794945394,
     "createdAt": "2026-11-16T01:25:53.000Z",
-    "updatedAt": "2026-11-25T15:02:25.000Z"
+    "updatedAt": "2026-11-26T18:30:16.000Z"
   },
   {
     "id": "lead_1794802620648_o4uclq",
@@ -8262,10 +8356,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11504326",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102131,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T23:28:35.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:30:17.000Z"
   },
   {
     "id": "lead_1794794237672_2xgbld",
@@ -8426,17 +8520,17 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11503860",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102134,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T22:41:27.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794792195531_nyoce6",
     "name": "Simone Xavier Dantas",
     "phone": "(11) 96250-9614",
     "email": "simonexavier3009@gmail.com",
-    "serviceInterest": "Harmonização Facial Personalizada",
+    "serviceInterest": "Harmonização Facial Personalizada (Recorrente: 2º ciclo)",
     "ctaLocation": "Hero Tratamento",
     "message": "Oi meu nome é Simone Xavier Dantas, vim pelo site da Nidô e gostaria de informações sobre Harmonização Facial Personalizada. Você pode me orientar?",
     "trafficChannel": "Meta Ads",
@@ -8470,27 +8564,36 @@
       "content": "paciente-modelo",
       "term": "quente_site",
       "visitorId": "v_1794792142357_k9rrha",
-      "sessionId": "s_1794792142354_r7vkuk"
+      "sessionId": "s_1795659818470_sbgfmq"
     },
     "viewedTreatments": [
       "Harmonização Facial Personalizada"
     ],
     "sessionJourney": {
-      "startedAt": "2026-11-16T01:22:22.358Z",
-      "totalDurationSeconds": 53,
+      "startedAt": "2026-11-26T02:23:38.470Z",
+      "totalDurationSeconds": 17,
       "totalPageViews": 1,
       "steps": [
         {
           "path": "/tratamentos/harmonizacao-facial",
           "title": "Harmonização Facial Personalizada em São Paulo | Clínica Nidô",
-          "enteredAt": 1794792142358,
-          "durationSeconds": 53
+          "enteredAt": 1795659818470,
+          "durationSeconds": 17
         }
       ],
       "deviceType": "Mobile",
       "browser": "Instagram In-App Browser"
     },
     "procedureCycles": [
+      {
+        "cycleId": "cycle_1795659835466",
+        "procedureName": "Harmonização Facial Personalizada",
+        "date": "2026-11-26T02:23:55.466Z",
+        "status": "novo",
+        "trafficSource": "ig",
+        "trafficCampaign": "novembro-2026_whats-no-site",
+        "notes": "Novo contato via Hero Tratamento: \"Oi meu nome é Simone Xavier Dantas, vim pelo site da Nidô e gostaria de informações sobre Harmonização Facial Personalizada. Você pode me orientar?\""
+      },
       {
         "cycleId": "cycle_1_1794792195531",
         "procedureName": "Harmonização Facial Personalizada",
@@ -8501,14 +8604,14 @@
         "notes": "Primeiro contato registrado"
       }
     ],
-    "status": "novo",
+    "status": "em_contato",
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11503664",
     "kommoStatusId": "105149575",
     "kommoUpdatedAt": 1794853032,
     "createdAt": "2026-11-15T22:23:15.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T15:42:05.000Z"
   },
   {
     "id": "lead_1794790234412_egx8wb",
@@ -8584,10 +8687,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11503300",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1794853045,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T21:50:34.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794789432865_7ihexv",
@@ -8754,10 +8857,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11502766",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102172,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T21:01:59.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794787290530_k009re",
@@ -8831,10 +8934,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11502762",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1794943258,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T21:01:30.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794787166547_da5o1j",
@@ -8910,10 +9013,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11502746",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275900,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T20:59:26.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794784932872_c6myu8",
@@ -9232,10 +9335,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11497226",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1794850161,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T17:14:35.000Z",
-    "updatedAt": "2026-11-25T15:57:22.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794772457949_sf2bqm",
@@ -9309,10 +9412,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11496970",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102185,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T16:54:17.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794772270457_bv8cvi",
@@ -9388,10 +9491,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11496930",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102193,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T16:51:10.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794763959789_vsgoz1",
@@ -9621,10 +9724,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11492296",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102213,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795728677,
     "createdAt": "2026-11-15T10:21:33.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:31:18.000Z"
   },
   {
     "id": "lead_1794740576587_k70g2a",
@@ -9698,10 +9801,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11490882",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102220,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-15T08:02:56.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:16:29.000Z"
   },
   {
     "id": "lead_1794713495842_2pfv1p",
@@ -9869,10 +9972,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11488798",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795633035,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-14T23:07:58.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:13:03.000Z"
   },
   {
     "id": "lead_1794677983774_9hv78p",
@@ -10033,10 +10136,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11482338",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275906,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-14T14:24:31.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:16:33.000Z"
   },
   {
     "id": "lead_1794676656586_zu11li",
@@ -10112,10 +10215,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11482236",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275911,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-14T14:17:36.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:16:36.000Z"
   },
   {
     "id": "lead_1794664883765_evy3se",
@@ -10280,10 +10383,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11477488",
-    "kommoStatusId": "105149583",
-    "kommoUpdatedAt": 1794853938,
+    "kommoStatusId": "105149575",
+    "kommoUpdatedAt": 1795726631,
     "createdAt": "2026-11-14T08:49:45.000Z",
-    "updatedAt": "2026-11-25T15:02:36.000Z"
+    "updatedAt": "2026-11-26T17:57:11.000Z"
   },
   {
     "id": "lead_1794656216465_qdeq31",
@@ -10357,10 +10460,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11477360",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275922,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-14T08:36:56.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:16:40.000Z"
   },
   {
     "id": "lead_1794654094293_c55hk2",
@@ -10434,10 +10537,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11477040",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102230,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-14T08:01:34.000Z",
-    "updatedAt": "2026-11-25T15:57:23.000Z"
+    "updatedAt": "2026-11-26T18:16:32.000Z"
   },
   {
     "id": "lead_1794650829501_eyppk0",
@@ -10596,10 +10699,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11476374",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102234,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727582,
     "createdAt": "2026-11-14T05:55:10.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:16:42.000Z"
   },
   {
     "id": "lead_1794614534208_3g95d5",
@@ -10682,10 +10785,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11472956",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102239,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-13T21:02:14.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1794609124755_rb7yck",
@@ -11175,10 +11278,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11447582",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275925,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-12T22:12:36.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1794529663002_llt058",
@@ -12304,10 +12407,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11291990",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795275931,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-07T08:59:19.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1794016297376_7qd5ut",
@@ -13040,10 +13143,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11230124",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102242,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-04T23:10:20.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1793798615358_wm9jas",
@@ -13424,10 +13527,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11143144",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102246,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-02T23:01:25.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1793641625925_pi88ox",
@@ -13509,10 +13612,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11132798",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102263,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-02T14:47:05.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1793621505450_cc6sfu",
@@ -13673,10 +13776,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11121774",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102273,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-02T00:27:05.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1793560178910_j06vjo",
@@ -13832,10 +13935,10 @@
     "notes": "",
     "metaLeadSent": false,
     "kommoLeadId": "11107616",
-    "kommoStatusId": "105149575",
-    "kommoUpdatedAt": 1795102280,
+    "kommoStatusId": "114624159",
+    "kommoUpdatedAt": 1795727585,
     "createdAt": "2026-11-01T10:39:17.000Z",
-    "updatedAt": "2026-11-25T15:57:24.000Z"
+    "updatedAt": "2026-11-26T18:13:06.000Z"
   },
   {
     "id": "lead_1793533875084_vvhv7k",
